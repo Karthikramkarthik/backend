@@ -1,0 +1,249 @@
+const mysql = require('mysql2/promise');
+require('dotenv').config();
+
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 8889,
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASS || 'root',
+  database: process.env.DB_NAME || 'stock_management',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+// Test database connection and auto-migrate tables on load
+(async () => {
+  try {
+    const connection = await pool.getConnection();
+    console.log('Connected to MySQL Database successfully via connection pool.');
+
+    // 1. Migrate orders table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`orders\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`order_number\` varchar(50) NOT NULL,
+        \`customer_name\` varchar(100) NOT NULL,
+        \`customer_mobile\` varchar(20) NOT NULL,
+        \`customer_email\` varchar(100) DEFAULT NULL,
+        \`shipping_address\` text NOT NULL,
+        \`payment_method\` varchar(50) DEFAULT 'COD',
+        \`subtotal\` decimal(12,2) NOT NULL,
+        \`discount\` decimal(10,2) DEFAULT 0,
+        \`gst_amount\` decimal(10,2) DEFAULT 0,
+        \`shipping_charge\` decimal(10,2) DEFAULT 0,
+        \`grand_total\` decimal(12,2) NOT NULL,
+        \`status\` enum('Pending','Processing','Shipped','Delivered','Cancelled') DEFAULT 'Pending',
+        \`order_date\` date NOT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`order_number\` (\`order_number\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 2. Migrate order_items table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`order_items\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`order_id\` int(11) NOT NULL,
+        \`product_id\` int(11) NOT NULL,
+        \`quantity\` int(11) NOT NULL,
+        \`price\` decimal(10,2) NOT NULL,
+        \`total\` decimal(10,2) NOT NULL,
+        PRIMARY KEY (\`id\`),
+        FOREIGN KEY (\`order_id\`) REFERENCES \`orders\` (\`id\`) ON DELETE CASCADE,
+        FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 3. Migrate coupons table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`coupons\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`code\` varchar(50) NOT NULL,
+        \`type\` enum('fixed','percentage') NOT NULL,
+        \`value\` decimal(10,2) NOT NULL,
+        \`min_order_amount\` decimal(10,2) DEFAULT 0,
+        \`expiry_date\` date NOT NULL,
+        \`usage_limit\` int(11) DEFAULT 0,
+        \`used_count\` int(11) DEFAULT 0,
+        \`status\` enum('active','inactive') DEFAULT 'active',
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`code\` (\`code\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Seed default coupons if coupons table is empty
+    const [couponCountRows] = await connection.query('SELECT COUNT(*) as count FROM coupons');
+    if (couponCountRows[0].count === 0) {
+      await connection.query(`
+        INSERT INTO \`coupons\` (\`code\`, \`type\`, \`value\`, \`min_order_amount\`, \`expiry_date\`, \`usage_limit\`, \`status\`) VALUES
+        ('WELCOME10', 'percentage', 10.00, 500.00, '2026-12-31', 100, 'active'),
+        ('FLAT500', 'fixed', 500.00, 2000.00, '2026-12-31', 50, 'active')
+      `);
+      console.log('Seeded default coupons table entries.');
+    }
+
+    // 4. Migrate banners table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`banners\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`title\` varchar(150) NOT NULL,
+        \`subtitle\` varchar(255) DEFAULT NULL,
+        \`image\` varchar(255) NOT NULL,
+        \`redirect_url\` varchar(255) DEFAULT NULL,
+        \`display_order\` int(11) DEFAULT 0,
+        \`status\` enum('active','inactive') DEFAULT 'active',
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 5. Migrate reviews table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`reviews\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`product_id\` int(11) NOT NULL,
+        \`customer_name\` varchar(100) NOT NULL,
+        \`rating\` int(11) NOT NULL,
+        \`review_message\` text NOT NULL,
+        \`status\` enum('Pending','Approved','Rejected') DEFAULT 'Pending',
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 6. Migrate inventory_history table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`inventory_history\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`product_id\` int(11) NOT NULL,
+        \`change_quantity\` int(11) NOT NULL,
+        \`action_type\` varchar(50) NOT NULL,
+        \`reference_id\` int(11) DEFAULT NULL,
+        \`reference_number\` varchar(50) DEFAULT NULL,
+        \`notes\` varchar(255) DEFAULT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 7. Migrate notifications table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`notifications\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`type\` enum('new_order','low_stock','new_customer','review') NOT NULL,
+        \`message\` varchar(255) NOT NULL,
+        \`reference_id\` int(11) DEFAULT NULL,
+        \`is_read\` tinyint(1) DEFAULT 0,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 8. Migrate customers table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`customers\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`name\` varchar(100) NOT NULL,
+        \`mobile\` varchar(20) NOT NULL,
+        \`email\` varchar(100) DEFAULT NULL,
+        \`password\` varchar(255) DEFAULT NULL,
+        \`address\` text DEFAULT NULL,
+        \`status\` enum('active','inactive') DEFAULT 'active',
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`mobile\` (\`mobile\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Ensure password column exists in customers table in case table was pre-created
+    try {
+      await connection.query('ALTER TABLE `customers` ADD COLUMN `password` varchar(255) DEFAULT NULL AFTER `email`');
+      console.log('Database auto-migration: Added password column to customers table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
+    }
+
+    // Ensure back, side, detail view image columns exist in products table
+    try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `image_back` varchar(255) DEFAULT NULL AFTER `image`');
+      console.log('Database auto-migration: Added image_back column to products table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `image_side` varchar(255) DEFAULT NULL AFTER `image_back`');
+      console.log('Database auto-migration: Added image_side column to products table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `image_detail` varchar(255) DEFAULT NULL AFTER `image_side`');
+      console.log('Database auto-migration: Added image_detail column to products table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `actual_price` decimal(10,2) DEFAULT NULL AFTER `purchase_price`');
+      console.log('Database auto-migration: Added actual_price column to products table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `discount_percent` int(11) DEFAULT 0 AFTER `actual_price`');
+      console.log('Database auto-migration: Added discount_percent column to products table.');
+    } catch (err) {}
+
+    // 9. Migrate instagram_settings table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`instagram_settings\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`profile_url\` varchar(255) NOT NULL DEFAULT 'https://www.instagram.com/kids_boutique',
+        \`is_enabled\` tinyint(1) NOT NULL DEFAULT 1,
+        \`reels_count\` int(11) NOT NULL DEFAULT 6,
+        \`section_title\` varchar(255) NOT NULL DEFAULT '✨ Capture The Sparkle on Instagram',
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Seed default settings if empty
+    const [settingsCount] = await connection.query('SELECT COUNT(*) as count FROM instagram_settings');
+    if (settingsCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO \`instagram_settings\` (\`profile_url\`, \`is_enabled\`, \`reels_count\`, \`section_title\`)
+        VALUES ('https://www.instagram.com/kids_boutique_diaries', 1, 6, '✨ Capture The Sparkle on Instagram')
+      `);
+      console.log('Seeded default instagram settings.');
+    }
+
+    // 10. Migrate instagram_reels table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`instagram_reels\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`thumbnail_url\` varchar(500) NOT NULL,
+        \`video_url\` varchar(500) NOT NULL,
+        \`caption\` varchar(500) DEFAULT NULL,
+        \`publish_date\` datetime DEFAULT CURRENT_TIMESTAMP,
+        \`instagram_url\` varchar(500) DEFAULT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Seed default reels if empty
+    const [reelsCount] = await connection.query('SELECT COUNT(*) as count FROM instagram_reels');
+    if (reelsCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO \`instagram_reels\` (\`thumbnail_url\`, \`video_url\`, \`caption\`, \`publish_date\`, \`instagram_url\`) VALUES
+        ('https://images.unsplash.com/photo-1519689680058-324335c77eba?q=80&w=600&auto=format&fit=crop', 'https://assets.mixkit.co/videos/preview/mixkit-toddler-girl-playing-with-toys-48866-large.mp4', '🎨 Messy hands and creative minds! Exploring new pastel puzzles today at our baby activity workshop. #kidsplay #organicclothing', NOW(), 'https://www.instagram.com/reel/C8a1b2c3d4/'),
+        ('https://images.unsplash.com/photo-1503919545889-aef636e10ad4?q=80&w=600&auto=format&fit=crop', 'https://assets.mixkit.co/videos/preview/mixkit-little-child-playing-with-a-colorful-toy-42353-large.mp4', '🌈 Summer dresses made for pure joy! Extremely soft cotton fabric, certified 100% skin-safe for toddlers. #kidswear #summerboutique', NOW() - INTERVAL 1 DAY, 'https://www.instagram.com/reel/C8e5f6g7h8/'),
+        ('https://images.unsplash.com/photo-1515488042361-404e9250afef?q=80&w=600&auto=format&fit=crop', 'https://assets.mixkit.co/videos/preview/mixkit-toddler-boy-playing-on-the-grass-48863-large.mp4', '🌿 Outdoor active plays in hyper-stretch overalls. Let them explore the summer nature comfortably! ☀️ #toddlervibe #playwear', NOW() - INTERVAL 2 DAY, 'https://www.instagram.com/reel/C8i9j0k1l2/'),
+        ('https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600&auto=format&fit=crop', 'https://assets.mixkit.co/videos/preview/mixkit-baby-playing-in-a-crib-with-toys-48868-large.mp4', '💤 Dreaming high in organic cotton sleepwear sets. Keep them cozy and happy through cozy naps. #babyessentials #babysleep', NOW() - INTERVAL 3 DAY, 'https://www.instagram.com/reel/C8m3n4o5p6/')
+      `);
+      console.log('Seeded default mock instagram reels.');
+    }
+
+    connection.release();
+    console.log('Stock Management Database extension auto-migrations completed.');
+  } catch (error) {
+    console.error('Database extension migration failed:', error.message);
+  }
+})();
+
+module.exports = pool;
