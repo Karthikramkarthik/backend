@@ -7,7 +7,10 @@ const authMiddleware = require('../middleware/auth');
 router.use(authMiddleware);
 
 router.get('/', orderController.list);
+router.get('/summary', orderController.summary);
 router.get('/:id', orderController.get);
 router.put('/:id/status', orderController.updateStatus);
+router.delete('/:id', orderController.delete);
+router.post('/:id/invoice', orderController.getInvoice);
 
 module.exports = router;

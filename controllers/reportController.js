@@ -248,7 +248,7 @@ exports.getReports = async (req, res) => {
 
     // 7. Stock Report list
     const [stockReport] = await db.query(`
-      SELECT p.code, p.name, c.name as category_name, p.stock_quantity, p.status 
+      SELECT p.code, p.name, c.name as category_name, p.stock_quantity, p.initial_stock_quantity, p.status 
       FROM products p 
       LEFT JOIN categories c ON p.category_id = c.id
       ORDER BY p.stock_quantity ASC
@@ -327,3 +327,255 @@ exports.getReports = async (req, res) => {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };
+
+exports.customersByProduct = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    let posWhere = [];
+    let posParams = [];
+    let ecomWhere = ["o.status != 'Cancelled'", "o.status != 'Returned'", "o.invoice_number IS NULL"];
+    let ecomParams = [];
+
+    // Filter by Product Name or Category
+    if (req.query.product) {
+      posWhere.push('(p.name LIKE ? OR cat.name LIKE ?)');
+      posParams.push('%' + req.query.product + '%', '%' + req.query.product + '%');
+
+      ecomWhere.push('(p.name LIKE ? OR cat.name LIKE ?)');
+      ecomParams.push('%' + req.query.product + '%', '%' + req.query.product + '%');
+    }
+
+    // Filter by Customer Name or Mobile
+    if (req.query.customer) {
+      posWhere.push('(c.name LIKE ? OR c.mobile LIKE ?)');
+      posParams.push('%' + req.query.customer + '%', '%' + req.query.customer + '%');
+
+      ecomWhere.push('(o.customer_name LIKE ? OR o.customer_mobile LIKE ?)');
+      ecomParams.push('%' + req.query.customer + '%', '%' + req.query.customer + '%');
+    }
+
+    // Filter by Date Range
+    if (req.query.dateStart) {
+      posWhere.push('s.sale_date >= ?');
+      posParams.push(req.query.dateStart);
+
+      ecomWhere.push('o.order_date >= ?');
+      ecomParams.push(req.query.dateStart);
+    }
+    if (req.query.dateEnd) {
+      posWhere.push('s.sale_date <= ?');
+      posParams.push(req.query.dateEnd);
+
+      ecomWhere.push('o.order_date <= ?');
+      ecomParams.push(req.query.dateEnd);
+    }
+
+    const posWhereStr = posWhere.length > 0 ? ' AND ' + posWhere.join(' AND ') : '';
+    const ecomWhereStr = ecomWhere.length > 0 ? ' AND ' + ecomWhere.join(' AND ') : '';
+
+    // 1. Get totals and overall statistics
+    const summaryQuery = `
+      SELECT 
+        COUNT(DISTINCT mobile) AS total_customers,
+        SUM(total_amount) AS total_revenue
+      FROM (
+        SELECT 
+          c.mobile AS mobile,
+          si.total AS total_amount
+        FROM sales s
+        JOIN sale_items si ON s.id = si.sale_id
+        JOIN products p ON si.product_id = p.id
+        LEFT JOIN categories cat ON p.category_id = cat.id
+        JOIN customers c ON s.customer_id = c.id
+        WHERE 1=1 ${posWhereStr}
+        
+        UNION ALL
+        
+        SELECT 
+          o.customer_mobile AS mobile,
+          oi.total AS total_amount
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN products p ON oi.product_id = p.id
+        LEFT JOIN categories cat ON p.category_id = cat.id
+        WHERE 1=1 ${ecomWhereStr}
+      ) AS combined
+    `;
+
+    const summaryParams = [...posParams, ...ecomParams];
+    const [[summary]] = await db.query(summaryQuery, summaryParams);
+
+    const totalCustomers = summary ? (summary.total_customers || 0) : 0;
+    const totalRevenue = summary ? parseFloat(summary.total_revenue || 0) : 0;
+
+    // 2. Get paginated customer records
+    const listQuery = `
+      SELECT 
+        mobile,
+        MIN(customer_name) AS customer_name,
+        MIN(customer_email) AS customer_email,
+        MIN(source) AS source,
+        COUNT(DISTINCT transaction_id) AS total_orders,
+        SUM(quantity) AS total_quantity,
+        SUM(total_amount) AS total_amount,
+        MAX(purchase_date) AS last_purchase_date
+      FROM (
+        SELECT 
+          c.mobile AS mobile,
+          c.name AS customer_name,
+          c.email AS customer_email,
+          c.source AS source,
+          CONCAT('pos_', s.id) AS transaction_id,
+          si.quantity AS quantity,
+          si.total AS total_amount,
+          s.sale_date AS purchase_date
+        FROM sales s
+        JOIN sale_items si ON s.id = si.sale_id
+        JOIN products p ON si.product_id = p.id
+        LEFT JOIN categories cat ON p.category_id = cat.id
+        JOIN customers c ON s.customer_id = c.id
+        WHERE 1=1 ${posWhereStr}
+        
+        UNION ALL
+        
+        SELECT 
+          o.customer_mobile AS mobile,
+          o.customer_name AS customer_name,
+          o.customer_email AS customer_email,
+          'Website' AS source,
+          CONCAT('ecom_', o.id) AS transaction_id,
+          oi.quantity AS quantity,
+          oi.total AS total_amount,
+          o.order_date AS purchase_date
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        JOIN products p ON oi.product_id = p.id
+        LEFT JOIN categories cat ON p.category_id = cat.id
+        WHERE 1=1 ${ecomWhereStr}
+      ) AS combined
+      GROUP BY mobile
+      ORDER BY total_amount DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const listParams = [...posParams, ...ecomParams, limit, offset];
+    const [customers] = await db.query(listQuery, listParams);
+
+    res.json({
+      success: true,
+      summary: {
+        totalCustomers,
+        totalRevenue
+      },
+      customers,
+      pagination: {
+        page,
+        limit,
+        totalCustomers
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+exports.customerPurchaseHistory = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    
+    let mobile = customerId;
+    let customerName = '';
+    let customerEmail = '';
+
+    let cust;
+    const isId = /^\d+$/.test(customerId);
+    if (isId && customerId.length <= 6) {
+      const [rows] = await db.query('SELECT name, mobile, email FROM customers WHERE id = ?', [customerId]);
+      if (rows && rows.length > 0) {
+        cust = rows[0];
+      }
+    }
+    
+    if (!cust) {
+      const [rows] = await db.query('SELECT name, mobile, email FROM customers WHERE mobile = ?', [customerId]);
+      if (rows && rows.length > 0) {
+        cust = rows[0];
+      }
+    }
+
+    if (cust) {
+      mobile = cust.mobile;
+      customerName = cust.name;
+      customerEmail = cust.email;
+    }
+
+    // POS sales
+    const [posSales] = await db.query(`
+      SELECT s.id, s.invoice_number, s.payment_method, s.subtotal, s.discount, s.gst_amount, s.shipping_charge, s.grand_total, 
+             DATE_FORMAT(s.sale_date, '%Y-%m-%d') as date, 
+             CASE WHEN s.order_number IS NOT NULL THEN 'E-Commerce' ELSE 'POS' END as channel, 
+             'Completed' as status
+      FROM sales s
+      JOIN customers c ON s.customer_id = c.id
+      WHERE c.mobile = ?
+      ORDER BY s.sale_date DESC
+    `, [mobile]);
+
+    for (let sale of posSales) {
+      const [items] = await db.query(`
+        SELECT si.id, si.quantity, si.rate as price, si.total, si.size, p.name as product_name, p.code as product_code
+        FROM sale_items si
+        JOIN products p ON si.product_id = p.id
+        WHERE si.sale_id = ?
+      `, [sale.id]);
+      sale.items = items;
+    }
+
+    // E-commerce orders
+    const [ecomOrders] = await db.query(`
+      SELECT o.id, o.order_number as invoice_number, o.payment_method, o.subtotal, o.discount, o.gst_amount, o.shipping_charge, o.grand_total,
+             DATE_FORMAT(o.order_date, '%Y-%m-%d') as date, 'E-Commerce' as channel, o.status,
+             o.customer_name, o.customer_email
+      FROM orders o
+      WHERE o.customer_mobile = ? AND o.invoice_number IS NULL
+      ORDER BY o.order_date DESC
+    `, [mobile]);
+
+    for (let order of ecomOrders) {
+      const [items] = await db.query(`
+        SELECT oi.id, oi.quantity, oi.price, oi.total, oi.size, oi.color, p.name as product_name, p.code as product_code
+        FROM order_items oi
+        JOIN products p ON oi.product_id = p.id
+        WHERE oi.order_id = ?
+      `, [order.id]);
+      order.items = items;
+      if (!customerName && order.customer_name) {
+        customerName = order.customer_name;
+      }
+      if (!customerEmail && order.customer_email) {
+        customerEmail = order.customer_email;
+      }
+    }
+
+    const history = [...posSales, ...ecomOrders];
+    history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.json({
+      success: true,
+      customer: {
+        name: customerName || 'Guest Customer',
+        mobile: mobile,
+        email: customerEmail || 'N/A'
+      },
+      history
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+

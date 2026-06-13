@@ -115,7 +115,8 @@ exports.delete = async (req, res) => {
 // 6. Public Validate Coupon
 exports.validate = async (req, res) => {
   try {
-    const { code, amount } = req.body;
+    const code = req.body.code || req.body.coupon_code;
+    const amount = req.body.amount || req.body.subtotal;
 
     if (!code) {
       return res.status(400).json({ error: 'Coupon code is required' });
@@ -124,6 +125,7 @@ exports.validate = async (req, res) => {
     const orderAmount = parseFloat(amount || 0);
 
     const [coupons] = await db.query('SELECT * FROM coupons WHERE LOWER(code) = LOWER(?) LIMIT 1', [code]);
+
     if (coupons.length === 0) {
       return res.status(404).json({ error: 'Invalid coupon code' });
     }

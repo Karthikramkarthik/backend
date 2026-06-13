@@ -2,7 +2,22 @@ const db = require('../config/database');
 
 exports.list = async (req, res) => {
   try {
-    const [customers] = await db.query('SELECT * FROM customers ORDER BY name ASC');
+    const { source, q } = req.query;
+    let query = 'SELECT * FROM customers WHERE 1=1';
+    let params = [];
+
+    if (source) {
+      query += ' AND source = ?';
+      params.push(source);
+    }
+    if (q) {
+      query += ' AND (name LIKE ? OR mobile LIKE ? OR email LIKE ? OR address LIKE ?)';
+      const searchLike = `%${q}%`;
+      params.push(searchLike, searchLike, searchLike, searchLike);
+    }
+
+    query += ' ORDER BY name ASC';
+    const [customers] = await db.query(query, params);
     res.json({ success: true, customers });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
@@ -24,14 +39,14 @@ exports.get = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const { name, mobile, email, address, status } = req.body;
+    const { name, mobile, email, address, status, source } = req.body;
     if (!name || !mobile) {
       return res.status(400).json({ error: 'Customer name and mobile number are required' });
     }
 
     const [result] = await db.query(
-      'INSERT INTO customers (name, mobile, email, address, status) VALUES (?, ?, ?, ?, ?)',
-      [name, mobile, email || null, address || null, status || 'active']
+      'INSERT INTO customers (name, mobile, email, address, status, source) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, mobile, email || null, address || null, status || 'active', source || 'Admin Panel']
     );
 
     res.status(201).json({
@@ -47,7 +62,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, mobile, email, address, status } = req.body;
+    const { name, mobile, email, address, status, source } = req.body;
 
     if (!name || !mobile) {
       return res.status(400).json({ error: 'Customer name and mobile number are required' });
@@ -59,8 +74,8 @@ exports.update = async (req, res) => {
     }
 
     await db.query(
-      'UPDATE customers SET name = ?, mobile = ?, email = ?, address = ?, status = ? WHERE id = ?',
-      [name, mobile, email || null, address || null, status || 'active', id]
+      'UPDATE customers SET name = ?, mobile = ?, email = ?, address = ?, status = ?, source = ? WHERE id = ?',
+      [name, mobile, email || null, address || null, status || 'active', source || 'Admin Panel', id]
     );
 
     res.json({ success: true, message: 'Customer updated successfully' });

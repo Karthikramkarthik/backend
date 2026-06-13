@@ -18,6 +18,15 @@ const pool = mysql.createPool({
     const connection = await pool.getConnection();
     console.log('Connected to MySQL Database successfully via connection pool.');
 
+    const fs = require('fs');
+    try {
+      const [columns] = await connection.query('DESCRIBE purchase_items');
+      const [indexes] = await connection.query('SHOW INDEX FROM purchase_items');
+      fs.writeFileSync('inspect_output.txt', JSON.stringify({ columns, indexes }, null, 2));
+    } catch (err) {
+      fs.writeFileSync('inspect_output.txt', 'Error: ' + err.message);
+    }
+
     // 1. Migrate orders table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`orders\` (
@@ -33,7 +42,7 @@ const pool = mysql.createPool({
         \`gst_amount\` decimal(10,2) DEFAULT 0,
         \`shipping_charge\` decimal(10,2) DEFAULT 0,
         \`grand_total\` decimal(12,2) NOT NULL,
-        \`status\` enum('Pending','Processing','Shipped','Delivered','Cancelled') DEFAULT 'Pending',
+        \`status\` enum('Pending','Processing','Shipped','Delivered','Cancelled','Returned') DEFAULT 'Pending',
         \`order_date\` date NOT NULL,
         \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (\`id\`),
@@ -168,6 +177,15 @@ const pool = mysql.createPool({
       // Column already exists, safe to ignore
     }
 
+    // Ensure source column exists in customers table
+    try {
+      await connection.query("ALTER TABLE `customers` ADD COLUMN `source` enum('Website', 'Admin Panel', 'POS', 'Import') NOT NULL DEFAULT 'Admin Panel' AFTER `address`");
+      console.log('Database auto-migration: Added source column to customers table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
+    }
+
+
     // Ensure back, side, detail view image columns exist in products table
     try {
       await connection.query('ALTER TABLE `products` ADD COLUMN `image_back` varchar(255) DEFAULT NULL AFTER `image`');
@@ -182,12 +200,26 @@ const pool = mysql.createPool({
       console.log('Database auto-migration: Added image_detail column to products table.');
     } catch (err) {}
     try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `thumbnail` varchar(255) DEFAULT NULL AFTER `image_detail`');
+      console.log('Database auto-migration: Added thumbnail column to products table.');
+    } catch (err) {}
+    try {
       await connection.query('ALTER TABLE `products` ADD COLUMN `actual_price` decimal(10,2) DEFAULT NULL AFTER `purchase_price`');
       console.log('Database auto-migration: Added actual_price column to products table.');
     } catch (err) {}
     try {
       await connection.query('ALTER TABLE `products` ADD COLUMN `discount_percent` int(11) DEFAULT 0 AFTER `actual_price`');
       console.log('Database auto-migration: Added discount_percent column to products table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `products` ADD COLUMN `initial_stock_quantity` int(11) DEFAULT 0 AFTER `stock_quantity`');
+      console.log('Database auto-migration: Added initial_stock_quantity column to products table.');
+    } catch (err) {}
+
+    // Ensure gst_number column exists in suppliers table
+    try {
+      await connection.query('ALTER TABLE `suppliers` ADD COLUMN `gst_number` varchar(50) DEFAULT NULL AFTER `mobile`');
+      console.log('Database auto-migration: Added gst_number column to suppliers table.');
     } catch (err) {}
 
     // 9. Migrate instagram_settings table
@@ -237,6 +269,105 @@ const pool = mysql.createPool({
         ('https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=600&auto=format&fit=crop', 'https://assets.mixkit.co/videos/preview/mixkit-baby-playing-in-a-crib-with-toys-48868-large.mp4', '💤 Dreaming high in organic cotton sleepwear sets. Keep them cozy and happy through cozy naps. #babyessentials #babysleep', NOW() - INTERVAL 3 DAY, 'https://www.instagram.com/reel/C8m3n4o5p6/')
       `);
       console.log('Seeded default mock instagram reels.');
+    }
+
+    // 11. Migrate product_colors table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`product_colors\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`product_id\` int(11) NOT NULL,
+        \`color_name\` varchar(100) NOT NULL,
+        \`image_path\` varchar(255) DEFAULT NULL,
+        PRIMARY KEY (\`id\`),
+        FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Ensure size and color columns exist in order_items table
+    try {
+      await connection.query('ALTER TABLE `order_items` ADD COLUMN `size` varchar(50) DEFAULT NULL AFTER `price`');
+      console.log('Database auto-migration: Added size column to order_items table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `order_items` ADD COLUMN `color` varchar(50) DEFAULT NULL AFTER `size`');
+      console.log('Database auto-migration: Added color column to order_items table.');
+    } catch (err) {}
+
+    // Ensure status column in orders supports 'Returned'
+    try {
+      await connection.query("ALTER TABLE `orders` MODIFY COLUMN `status` enum('Pending','Processing','Shipped','Delivered','Cancelled','Returned') DEFAULT 'Pending'");
+      console.log('Database auto-migration: Updated status enum to include Returned in orders table.');
+    } catch (err) {
+      console.error('Failed to update status enum in orders table:', err);
+    }
+
+    // Ensure payment_method column in sales exists
+    try {
+      await connection.query("ALTER TABLE `sales` ADD COLUMN `payment_method` varchar(50) DEFAULT 'Cash' AFTER `invoice_number`");
+      console.log('Database auto-migration: Added payment_method column to sales table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
+    }
+
+    // 12. Migrate settings table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`settings\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`key_name\` varchar(50) NOT NULL,
+        \`value\` varchar(255) NOT NULL,
+        \`display_name\` varchar(100) NOT NULL,
+        \`updated_by\` varchar(100) DEFAULT NULL,
+        \`updated_at\` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`key_name\` (\`key_name\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Seed default settings if empty
+    const [settingsTableCount] = await connection.query('SELECT COUNT(*) as count FROM settings');
+    if (settingsTableCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO \`settings\` (\`key_name\`, \`value\`, \`display_name\`, \`updated_by\`) VALUES
+        ('gst_percentage', '5', 'Estimated GST (%)', 'System'),
+        ('shipping_fixed', '100', 'Fixed Shipping Charge (₹)', 'System'),
+        ('shipping_threshold', '1500', 'Free Shipping Threshold (₹)', 'System')
+      `);
+      console.log('Seeded default system settings.');
+    }
+
+    // Ensure viewer_count_enabled exists in settings table
+    try {
+      const [checkViewerCount] = await connection.query("SELECT id FROM settings WHERE key_name = 'viewer_count_enabled'");
+      if (checkViewerCount.length === 0) {
+        await connection.query("INSERT INTO settings (key_name, value, display_name, updated_by) VALUES ('viewer_count_enabled', '1', 'Enable Live Viewer Count', 'System')");
+        console.log('Database auto-migration: Added viewer_count_enabled setting.');
+      }
+    } catch (err) {
+      console.error('Failed to auto-migrate viewer_count_enabled setting:', err.message);
+    }
+
+    // Ensure invoice_number column exists in orders table
+    try {
+      await connection.query('ALTER TABLE `orders` ADD COLUMN `invoice_number` varchar(50) DEFAULT NULL AFTER `status`');
+      console.log('Database auto-migration: Added invoice_number column to orders table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
+    }
+
+    // Ensure order_number column exists in sales table
+    try {
+      await connection.query('ALTER TABLE `sales` ADD COLUMN `order_number` varchar(50) DEFAULT NULL AFTER `invoice_number`');
+      console.log('Database auto-migration: Added order_number column to sales table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
+    }
+
+    // Ensure status column exists in sales table
+    try {
+      await connection.query("ALTER TABLE `sales` ADD COLUMN `status` enum('Generated', 'Sent') NOT NULL DEFAULT 'Generated' AFTER `sale_date`");
+      console.log('Database auto-migration: Added status column to sales table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
     }
 
     connection.release();

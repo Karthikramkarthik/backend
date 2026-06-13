@@ -99,3 +99,46 @@ exports.delete = async (req, res) => {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };
+
+exports.getPurchases = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const [suppliers] = await db.query('SELECT * FROM suppliers WHERE id = ? LIMIT 1', [id]);
+    if (suppliers.length === 0) {
+      return res.status(404).json({ error: 'Supplier not found' });
+    }
+
+    let query = `
+      SELECT p.*, DATE_FORMAT(p.purchase_date, '%Y-%m-%d') as purchase_date
+      FROM purchases p
+      WHERE p.supplier_id = ?
+    `;
+    const params = [id];
+
+    if (startDate) {
+      query += ' AND p.purchase_date >= ?';
+      params.push(startDate);
+    }
+    if (endDate) {
+      query += ' AND p.purchase_date <= ?';
+      params.push(endDate);
+    }
+
+    query += ' ORDER BY p.purchase_date DESC, p.id DESC';
+
+    const [purchases] = await db.query(query, params);
+    const totalAmount = purchases.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0);
+
+    res.json({
+      success: true,
+      supplier: suppliers[0],
+      purchases,
+      totalAmount
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+

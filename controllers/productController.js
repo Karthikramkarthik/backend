@@ -85,9 +85,20 @@ exports.list = async (req, res) => {
       variantsByProduct[v.product_id].push(v);
     });
 
-    // Attach variants to products
+    // Fetch colors for all products
+    const [colors] = await db.query('SELECT * FROM product_colors');
+    const colorsByProduct = {};
+    colors.forEach(c => {
+      if (!colorsByProduct[c.product_id]) {
+        colorsByProduct[c.product_id] = [];
+      }
+      colorsByProduct[c.product_id].push(c);
+    });
+
+    // Attach variants and colors to products
     products.forEach(p => {
       p.variants = variantsByProduct[p.id] || [];
+      p.colors = colorsByProduct[p.id] || [];
     });
 
     res.json({ success: true, products });
@@ -106,8 +117,10 @@ exports.get = async (req, res) => {
     }
 
     const [variants] = await db.query('SELECT * FROM product_variants WHERE product_id = ?', [id]);
+    const [colors] = await db.query('SELECT * FROM product_colors WHERE product_id = ?', [id]);
     const product = products[0];
     product.variants = variants;
+    product.colors = colors;
 
     res.json({ success: true, product });
   } catch (error) {
@@ -117,10 +130,22 @@ exports.get = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
+    // Transform req.files array (from upload.any()) to field mapping
+    if (Array.isArray(req.files)) {
+      const filesObj = {};
+      req.files.forEach(file => {
+        if (!filesObj[file.fieldname]) {
+          filesObj[file.fieldname] = [];
+        }
+        filesObj[file.fieldname].push(file);
+      });
+      req.files = filesObj;
+    }
+
     const {
       code, name, category_id, supplier_id, size, age,
-      purchase_price, sales_price, stock_quantity, status, variants,
-      image, image_back, image_side, image_detail
+      purchase_price, sales_price, stock_quantity, initial_stock_quantity, status, variants, colors,
+      image, image_back, image_side, image_detail, thumbnail
     } = req.body;
 
     if (!code || !name || !category_id || !purchase_price || !sales_price) {
@@ -138,6 +163,7 @@ exports.create = async (req, res) => {
     const backPath = req.files && req.files['image_back'] ? `uploads/products/${req.files['image_back'][0].filename}` : (image_back || null);
     const sidePath = req.files && req.files['image_side'] ? `uploads/products/${req.files['image_side'][0].filename}` : (image_side || null);
     const detailPath = req.files && req.files['image_detail'] ? `uploads/products/${req.files['image_detail'][0].filename}` : (image_detail || null);
+    const thumbnailPath = req.files && req.files['thumbnail'] ? `uploads/products/${req.files['thumbnail'][0].filename}` : (thumbnail || null);
 
     const actualPriceVal = req.body.actual_price ? parseFloat(req.body.actual_price) : null;
     const salesPriceVal = parseFloat(sales_price);
@@ -146,25 +172,48 @@ exports.create = async (req, res) => {
       discountPercentVal = Math.round(((actualPriceVal - salesPriceVal) / actualPriceVal) * 100);
     }
 
+    const initialStockQty = initial_stock_quantity !== undefined ? parseInt(initial_stock_quantity) : (parseInt(stock_quantity) || 0);
+
     const [result] = await db.query(
       `INSERT INTO products 
-       (code, name, category_id, supplier_id, size, age, purchase_price, actual_price, sales_price, discount_percent, stock_quantity, image, image_back, image_side, image_detail, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (code, name, category_id, supplier_id, size, age, purchase_price, actual_price, sales_price, discount_percent, stock_quantity, initial_stock_quantity, image, image_back, image_side, image_detail, thumbnail, status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code, name, category_id, supplier_id || null, size || null, age || null,
-        purchase_price, actualPriceVal, salesPriceVal, discountPercentVal, stock_quantity || 0, imagePath, backPath, sidePath, detailPath, status || 'active'
+        purchase_price, actualPriceVal, salesPriceVal, discountPercentVal, stock_quantity || 0, initialStockQty, imagePath, backPath, sidePath, detailPath, thumbnailPath, status || 'active'
       ]
     );
 
     const productId = result.insertId;
 
     // Handle variants sizes if provided
-    if (variants && Array.isArray(variants)) {
-      for (const variant of variants) {
+    const variantsArr = variants ? (typeof variants === 'string' ? JSON.parse(variants) : variants) : [];
+    if (Array.isArray(variantsArr)) {
+      for (const variant of variantsArr) {
         if (variant.size && variant.stock_quantity !== undefined) {
           await db.query(
             'INSERT INTO product_variants (product_id, size, stock_quantity) VALUES (?, ?, ?)',
             [productId, variant.size.trim(), parseInt(variant.stock_quantity) || 0]
+          );
+        }
+      }
+    }
+
+    // Handle color variants if provided
+    const colorsArr = colors ? (typeof colors === 'string' ? JSON.parse(colors) : colors) : [];
+    if (Array.isArray(colorsArr)) {
+      for (let i = 0; i < colorsArr.length; i++) {
+        const col = colorsArr[i];
+        if (col.color_name) {
+          let colorImgPath = null;
+          if (req.files && req.files['color_image_' + i]) {
+            colorImgPath = `uploads/products/${req.files['color_image_' + i][0].filename}`;
+          } else if (col.image_path) {
+            colorImgPath = col.image_path;
+          }
+          await db.query(
+            'INSERT INTO product_colors (product_id, color_name, image_path) VALUES (?, ?, ?)',
+            [productId, col.color_name.trim(), colorImgPath]
           );
         }
       }
@@ -182,11 +231,23 @@ exports.create = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
+    // Transform req.files array (from upload.any()) to field mapping
+    if (Array.isArray(req.files)) {
+      const filesObj = {};
+      req.files.forEach(file => {
+        if (!filesObj[file.fieldname]) {
+          filesObj[file.fieldname] = [];
+        }
+        filesObj[file.fieldname].push(file);
+      });
+      req.files = filesObj;
+    }
+
     const { id } = req.params;
     const {
       code, name, category_id, supplier_id, size, age,
-      purchase_price, sales_price, stock_quantity, status, variants,
-      image, image_back, image_side, image_detail
+      purchase_price, sales_price, stock_quantity, initial_stock_quantity, status, variants, colors,
+      image, image_back, image_side, image_detail, thumbnail
     } = req.body;
 
     if (!code || !name || !category_id || !purchase_price || !sales_price) {
@@ -194,7 +255,7 @@ exports.update = async (req, res) => {
     }
 
     // Check product exists
-    const [exists] = await db.query('SELECT id, image, image_back, image_side, image_detail FROM products WHERE id = ?', [id]);
+    const [exists] = await db.query('SELECT id, image, image_back, image_side, image_detail, thumbnail FROM products WHERE id = ?', [id]);
     if (exists.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -257,6 +318,19 @@ exports.update = async (req, res) => {
       detailPath = image_detail || null;
     }
 
+    let thumbnailPath = exists[0].thumbnail;
+    if (req.files && req.files['thumbnail']) {
+      if (thumbnailPath && thumbnailPath.includes('uploads/products/')) {
+        const oldPath = path.join(__dirname, '../', thumbnailPath);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      }
+      thumbnailPath = `uploads/products/${req.files['thumbnail'][0].filename}`;
+    } else if (thumbnail !== undefined) {
+      thumbnailPath = thumbnail || null;
+    }
+
     const actualPriceVal = req.body.actual_price ? parseFloat(req.body.actual_price) : null;
     const salesPriceVal = parseFloat(sales_price);
     let discountPercentVal = 0;
@@ -264,17 +338,25 @@ exports.update = async (req, res) => {
       discountPercentVal = Math.round(((actualPriceVal - salesPriceVal) / actualPriceVal) * 100);
     }
 
-    await db.query(
-      `UPDATE products SET 
-       code = ?, name = ?, category_id = ?, supplier_id = ?, size = ?, age = ?, 
+    let updateFields = `code = ?, name = ?, category_id = ?, supplier_id = ?, size = ?, age = ?, 
        purchase_price = ?, actual_price = ?, sales_price = ?, discount_percent = ?, stock_quantity = ?, image = ?, 
-       image_back = ?, image_side = ?, image_detail = ?, status = ? 
-       WHERE id = ?`,
-      [
-        code, name, category_id, supplier_id || null, size || null, age || null,
-        purchase_price, actualPriceVal, salesPriceVal, discountPercentVal, stock_quantity || 0, imagePath, 
-        backPath, sidePath, detailPath, status || 'active', id
-      ]
+       image_back = ?, image_side = ?, image_detail = ?, thumbnail = ?, status = ?`;
+    let updateParams = [
+      code, name, category_id, supplier_id || null, size || null, age || null,
+      purchase_price, actualPriceVal, salesPriceVal, discountPercentVal, stock_quantity || 0, imagePath, 
+      backPath, sidePath, detailPath, thumbnailPath, status || 'active'
+    ];
+
+    if (initial_stock_quantity !== undefined) {
+      updateFields += `, initial_stock_quantity = ?`;
+      updateParams.push(parseInt(initial_stock_quantity) || 0);
+    }
+
+    updateParams.push(id);
+
+    await db.query(
+      `UPDATE products SET ${updateFields} WHERE id = ?`,
+      updateParams
     );
 
     // Delete existing variants and re-insert new ones (simplifies updating)
@@ -289,6 +371,50 @@ exports.update = async (req, res) => {
               'INSERT INTO product_variants (product_id, size, stock_quantity) VALUES (?, ?, ?)',
               [id, variant.size.trim(), parseInt(variant.stock_quantity) || 0]
             );
+          }
+        }
+      }
+    }
+
+    // Handle colors
+    if (colors !== undefined) {
+      const [existingColors] = await db.query('SELECT image_path FROM product_colors WHERE product_id = ?', [id]);
+      await db.query('DELETE FROM product_colors WHERE product_id = ?', [id]);
+      
+      const colorsArr = typeof colors === 'string' ? JSON.parse(colors) : colors;
+      const keptFiles = new Set();
+      if (Array.isArray(colorsArr)) {
+        for (let i = 0; i < colorsArr.length; i++) {
+          const col = colorsArr[i];
+          if (col.color_name) {
+            let colorImgPath = null;
+            if (req.files && req.files['color_image_' + i]) {
+              colorImgPath = `uploads/products/${req.files['color_image_' + i][0].filename}`;
+            } else if (col.image_path) {
+              colorImgPath = col.image_path;
+              keptFiles.add(colorImgPath);
+            }
+            await db.query(
+              'INSERT INTO product_colors (product_id, color_name, image_path) VALUES (?, ?, ?)',
+              [id, col.color_name.trim(), colorImgPath]
+            );
+          }
+        }
+      }
+
+      // Unlink orphaned color files
+      for (const row of existingColors) {
+        if (row.image_path && !keptFiles.has(row.image_path)) {
+          // Check that it's not used by any other product
+          const [inUse] = await db.query('SELECT id FROM product_colors WHERE image_path = ? LIMIT 1', [row.image_path]);
+          const [inProducts] = await db.query('SELECT id FROM products WHERE image = ? OR image_back = ? OR image_side = ? OR image_detail = ? OR thumbnail = ? LIMIT 1', [row.image_path, row.image_path, row.image_path, row.image_path, row.image_path]);
+          if (inUse.length === 0 && inProducts.length === 0) {
+            if (row.image_path.includes('uploads/products/')) {
+              const oldPath = path.join(__dirname, '../', row.image_path);
+              if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+              }
+            }
           }
         }
       }
@@ -315,11 +441,36 @@ exports.delete = async (req, res) => {
     }
 
     // Delete image file first
-    const [product] = await db.query('SELECT image FROM products WHERE id = ?', [id]);
-    if (product.length > 0 && product[0].image) {
-      const imgPath = path.join(__dirname, '../', product[0].image);
-      if (fs.existsSync(imgPath)) {
-        fs.unlinkSync(imgPath);
+    const [product] = await db.query('SELECT image, thumbnail FROM products WHERE id = ?', [id]);
+    if (product.length > 0) {
+      if (product[0].image) {
+        const imgPath = path.join(__dirname, '../', product[0].image);
+        if (fs.existsSync(imgPath)) {
+          fs.unlinkSync(imgPath);
+        }
+      }
+      if (product[0].thumbnail) {
+        const thumbPath = path.join(__dirname, '../', product[0].thumbnail);
+        if (fs.existsSync(thumbPath)) {
+          fs.unlinkSync(thumbPath);
+        }
+      }
+    }
+
+    // Delete product_colors images first
+    const [colors] = await db.query('SELECT image_path FROM product_colors WHERE product_id = ?', [id]);
+    for (const col of colors) {
+      if (col.image_path) {
+        const [inUse] = await db.query('SELECT id FROM product_colors WHERE image_path = ? AND product_id != ? LIMIT 1', [col.image_path, id]);
+        const [inProducts] = await db.query('SELECT id FROM products WHERE image = ? OR image_back = ? OR image_side = ? OR image_detail = ? OR thumbnail = ? LIMIT 1', [col.image_path, col.image_path, col.image_path, col.image_path, col.image_path]);
+        if (inUse.length === 0 && inProducts.length === 0) {
+          if (col.image_path.includes('uploads/products/')) {
+            const imgPath = path.join(__dirname, '../', col.image_path);
+            if (fs.existsSync(imgPath)) {
+              fs.unlinkSync(imgPath);
+            }
+          }
+        }
       }
     }
 
@@ -364,24 +515,20 @@ exports.import = async (req, res) => {
       return res.status(400).json({ error: 'Uploaded file is empty.' });
     }
 
-    // Validate headers
-    const expectedHeaders = [
+    // Validate required headers
+    const requiredHeaders = [
       'product name',
       'product code',
-      'category',
-      'supplier list',
-      'age',
       'purchase price',
-      'sales price',
       'initial stock quantity',
       'size'
     ];
 
     const firstRowHeaders = Object.keys(rows[0]).map(h => h.trim().toLowerCase());
     const missingHeaders = [];
-    expectedHeaders.forEach(expected => {
-      if (!firstRowHeaders.includes(expected)) {
-        missingHeaders.push(expected);
+    requiredHeaders.forEach(required => {
+      if (!firstRowHeaders.includes(required)) {
+        missingHeaders.push(required);
       }
     });
 
@@ -392,37 +539,54 @@ exports.import = async (req, res) => {
       });
     }
 
+    const hasCategoryHeader = firstRowHeaders.includes('category');
+    const hasAgeHeader = firstRowHeaders.includes('age');
+    const hasSalesPriceHeader = firstRowHeaders.includes('sales price');
+    const hasSupplierHeader = firstRowHeaders.includes('supplier list');
+
     let successCount = 0;
     let failedCount = 0;
     const failedRows = [];
 
     // Pre-fetch existing products to detect inserts vs updates
-    const [existingProducts] = await db.query('SELECT id, code, stock_quantity, size FROM products');
+    const [existingProducts] = await db.query('SELECT id, code, stock_quantity, size, category_id, supplier_id, age, sales_price FROM products');
     const existingProductsMap = {};
     existingProducts.forEach(p => {
       existingProductsMap[p.code.toLowerCase()] = p;
     });
 
+    const getRowValue = (r, key1, key2, fallback = '') => {
+      const val = r[key1] !== undefined && r[key1] !== null ? r[key1] : (r[key2] !== undefined && r[key2] !== null ? r[key2] : fallback);
+      return typeof val === 'string' ? val.trim() : String(val).trim();
+    };
+
     for (let index = 0; index < rows.length; index++) {
       const row = rows[index];
       const rowNum = index + 2; // Line index (1-based + 1 for header)
       
-      const productName = (row['Product Name'] || row['product name'] || '').trim();
-      const productCode = (row['Product Code'] || row['product code'] || '').trim();
-      const categoryName = (row['Category'] || row['category'] || 'General').trim();
-      const supplierName = (row['Supplier List'] || row['supplier list'] || '').trim();
-      const ageVal = (row['Age'] || row['age'] || '').trim();
-      const purchasePrice = parseFloat(row['Purchase Price'] || row['purchase price'] || 0);
-      const salesPrice = parseFloat(row['Sales Price'] || row['sales price'] || 0);
-      const stockQty = parseInt(row['Initial Stock Quantity'] || row['initial stock quantity'] || 0);
-      let size = (row['Size'] || row['size'] || '').trim();
+      const productName = getRowValue(row, 'Product Name', 'product name');
+      const productCode = getRowValue(row, 'Product Code', 'product code');
+      const categoryName = getRowValue(row, 'Category', 'category', 'General');
+      const supplierName = getRowValue(row, 'Supplier List', 'supplier list');
+      const ageVal = getRowValue(row, 'Age', 'age');
+      
+      const rawPurchasePrice = row['Purchase Price'] !== undefined && row['Purchase Price'] !== null ? row['Purchase Price'] : (row['purchase price'] !== undefined && row['purchase price'] !== null ? row['purchase price'] : 0);
+      const purchasePrice = parseFloat(rawPurchasePrice);
+
+      const rawSalesPrice = row['Sales Price'] !== undefined && row['Sales Price'] !== null ? row['Sales Price'] : (row['sales price'] !== undefined && row['sales price'] !== null ? row['sales price'] : 0);
+      const salesPrice = parseFloat(rawSalesPrice);
+
+      const rawStockQty = row['Initial Stock Quantity'] !== undefined && row['Initial Stock Quantity'] !== null ? row['Initial Stock Quantity'] : (row['initial stock quantity'] !== undefined && row['initial stock quantity'] !== null ? row['initial stock quantity'] : (row['initial_stock_quantity'] !== undefined && row['initial_stock_quantity'] !== null ? row['initial_stock_quantity'] : 0));
+      const stockQty = parseInt(rawStockQty);
+
+      let size = getRowValue(row, 'Size', 'size');
 
       // Validation
       const errors = [];
       if (!productName) errors.push('Product name is required.');
       if (!productCode) errors.push('Product code is required.');
       if (isNaN(purchasePrice) || purchasePrice <= 0) errors.push('Valid purchase price is required.');
-      if (isNaN(salesPrice) || salesPrice <= 0) errors.push('Valid sales price is required.');
+      if (isNaN(salesPrice) || salesPrice < 0) errors.push('Sales price must be a valid non-negative number.');
 
       // Smart Sizing Fallback: size empty but age not, age acts as size
       if (size === '' && ageVal !== '' && !isNaN(ageVal)) {
@@ -436,16 +600,44 @@ exports.import = async (req, res) => {
       }
 
       try {
-        const categoryId = await getOrCreateCategoryId(categoryName);
-        const supplierId = await getOrCreateSupplierId(supplierName);
-        const finalAge = ageVal !== '' && !isNaN(ageVal) ? parseInt(ageVal) : null;
-
         const codeLower = productCode.toLowerCase();
-        
-        if (existingProductsMap[codeLower]) {
+        const existing = existingProductsMap[codeLower];
+
+        // Resolve Category ID
+        let categoryId;
+        if (existing && !hasCategoryHeader) {
+          categoryId = existing.category_id;
+        } else {
+          categoryId = await getOrCreateCategoryId(categoryName);
+        }
+
+        // Resolve Supplier ID
+        let supplierId;
+        if (existing && !hasSupplierHeader) {
+          supplierId = existing.supplier_id;
+        } else {
+          supplierId = await getOrCreateSupplierId(supplierName);
+        }
+
+        // Resolve Age
+        let finalAge;
+        if (existing && !hasAgeHeader) {
+          finalAge = existing.age;
+        } else {
+          finalAge = ageVal !== '' && !isNaN(ageVal) ? parseInt(ageVal) : null;
+        }
+
+        // Resolve Sales Price
+        let finalSalesPrice;
+        if (existing && !hasSalesPriceHeader) {
+          finalSalesPrice = parseFloat(existing.sales_price);
+        } else {
+          finalSalesPrice = salesPrice;
+        }
+
+        if (existing) {
           // Update product and variants
-          const product = existingProductsMap[codeLower];
-          const productId = product.id;
+          const productId = existing.id;
 
           if (size !== '') {
             // Check size variant
@@ -475,8 +667,8 @@ exports.import = async (req, res) => {
             sizesStr = sizesArr.join(', ');
             totalStock = allVars.reduce((sum, v) => sum + parseInt(v.stock_quantity), 0);
           } else {
-            totalStock = parseInt(product.stock_quantity) + stockQty;
-            sizesStr = size || product.size;
+            totalStock = parseInt(existing.stock_quantity) + stockQty;
+            sizesStr = size || existing.size;
           }
 
           // Update main product table
@@ -485,21 +677,21 @@ exports.import = async (req, res) => {
              name = ?, category_id = ?, supplier_id = ?, size = ?, age = ?, 
              purchase_price = ?, sales_price = ?, stock_quantity = ? 
              WHERE id = ?`,
-            [productName, categoryId, supplierId, sizesStr, finalAge, purchasePrice, salesPrice, totalStock, productId]
+            [productName, categoryId, supplierId, sizesStr, finalAge, purchasePrice, finalSalesPrice, totalStock, productId]
           );
 
           // Update cache map values
-          product.stock_quantity = totalStock;
-          product.size = sizesStr;
+          existing.stock_quantity = totalStock;
+          existing.size = sizesStr;
 
         } else {
           // Insert new product
           const sizeVal = size !== '' ? size : null;
           const [result] = await db.query(
             `INSERT INTO products 
-             (code, name, category_id, supplier_id, size, age, purchase_price, sales_price, stock_quantity, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [productCode, productName, categoryId, supplierId, sizeVal, finalAge, purchasePrice, salesPrice, stockQty]
+             (code, name, category_id, supplier_id, size, age, purchase_price, sales_price, stock_quantity, initial_stock_quantity, status) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+            [productCode, productName, categoryId, supplierId, sizeVal, finalAge, purchasePrice, finalSalesPrice, stockQty, stockQty]
           );
 
           const productId = result.insertId;
@@ -516,7 +708,11 @@ exports.import = async (req, res) => {
             id: productId,
             code: productCode,
             stock_quantity: stockQty,
-            size: sizeVal
+            size: sizeVal,
+            category_id: categoryId,
+            supplier_id: supplierId,
+            age: finalAge,
+            sales_price: finalSalesPrice
           };
         }
 
@@ -562,4 +758,52 @@ const parseXlsx = (filePath) => {
   const sheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[sheetName];
   return xlsx.utils.sheet_to_json(worksheet);
+};
+
+// In-memory active viewers map: { [productId]: { [sessionId]: timestamp } }
+const activeViewersMap = {};
+
+exports.trackViewer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { sessionId } = req.body;
+
+    if (!id || !sessionId) {
+      return res.status(400).json({ error: 'Missing product ID or Session ID' });
+    }
+
+    const now = Date.now();
+    
+    // Initialize product list if not present
+    if (!activeViewersMap[id]) {
+      activeViewersMap[id] = {};
+    }
+
+    // Update session timestamp
+    activeViewersMap[id][sessionId] = now;
+
+    // Cleanup active viewers list: remove sessions inactive for > 30 seconds
+    const threshold = now - 30000;
+    const activeSessions = activeViewersMap[id];
+    let realCount = 0;
+
+    for (const [sid, timestamp] of Object.entries(activeSessions)) {
+      if (timestamp < threshold) {
+        delete activeSessions[sid];
+      } else {
+        realCount++;
+      }
+    }
+
+    // Predefined baseline logic for UI demonstration + actual real-time active sessions.
+    // Base is deterministic per product (5 to 19) + a slow fluctuation over time (-3 to +3) + realCount.
+    const base = (parseInt(id) * 7) % 15 + 5;
+    const timeSec = Math.floor(now / 15000); // changes every 15s
+    const fluctuation = (timeSec * 3 + parseInt(id)) % 7 - 3;
+    const count = Math.max(1, base + fluctuation + (realCount - 1));
+
+    res.json({ success: true, count, realCount });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
 };

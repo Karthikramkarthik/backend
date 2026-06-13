@@ -7,6 +7,7 @@ router.use(authMiddleware);
 
 router.get('/', supplierController.list);
 router.get('/:id', supplierController.get);
+router.get('/:id/purchases', supplierController.getPurchases);
 router.post('/', supplierController.create);
 router.put('/:id', supplierController.update);
 router.delete('/:id', supplierController.delete);

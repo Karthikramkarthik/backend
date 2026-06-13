@@ -54,7 +54,7 @@ exports.create = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const { customer_id, subtotal, discount, tax, shipping, grand_total, items } = req.body;
+    const { customer_id, subtotal, discount, tax, shipping, grand_total, items, payment_method } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty. Please add products.' });
@@ -71,11 +71,12 @@ exports.create = async (req, res) => {
 
     // Record sale
     const [saleResult] = await connection.query(
-      `INSERT INTO sales (invoice_number, customer_id, subtotal, discount, gst_amount, shipping_charge, grand_total, sale_date) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())`,
+      `INSERT INTO sales (invoice_number, customer_id, payment_method, subtotal, discount, gst_amount, shipping_charge, grand_total, sale_date) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
       [
         invoiceNumber,
         customer_id,
+        payment_method || 'Cash',
         subtotal || 0,
         discount || 0,
         tax || 0,
@@ -209,6 +210,28 @@ exports.priceAudits = async (req, res) => {
       ORDER BY a.created_at DESC
     `);
     res.json({ success: true, audits });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+// Update sale status (e.g. Generated, Sent)
+exports.updateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const validStatus = ['Generated', 'Sent'];
+    if (!status || !validStatus.includes(status)) {
+      return res.status(400).json({ error: 'Invalid or missing status' });
+    }
+
+    const [result] = await db.query('UPDATE sales SET status = ? WHERE id = ?', [status, id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Invoice record not found' });
+    }
+
+    res.json({ success: true, message: `Invoice status updated to ${status} successfully!` });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }

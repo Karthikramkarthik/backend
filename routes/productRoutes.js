@@ -7,20 +7,11 @@ const uploadMiddleware = require('../middleware/upload');
 // Public endpoints (no login required for customer storefront browsing)
 router.get('/', productController.list);
 router.get('/:id', productController.get);
+router.post('/:id/viewers', productController.trackViewer);
 
 // Protected endpoints (admin operations)
-router.post('/', authMiddleware, uploadMiddleware.fields([
-  { name: 'image', maxCount: 1 },
-  { name: 'image_back', maxCount: 1 },
-  { name: 'image_side', maxCount: 1 },
-  { name: 'image_detail', maxCount: 1 }
-]), productController.create);
-router.put('/:id', authMiddleware, uploadMiddleware.fields([
-  { name: 'image', maxCount: 1 },
-  { name: 'image_back', maxCount: 1 },
-  { name: 'image_side', maxCount: 1 },
-  { name: 'image_detail', maxCount: 1 }
-]), productController.update);
+router.post('/', authMiddleware, uploadMiddleware.any(), productController.create);
+router.put('/:id', authMiddleware, uploadMiddleware.any(), productController.update);
 router.delete('/:id', authMiddleware, productController.delete);
 router.post('/import', authMiddleware, uploadMiddleware.single('product_file'), productController.import);
 

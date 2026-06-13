@@ -53,7 +53,9 @@ exports.create = async (req, res) => {
         quantity: item.quantity,
         price: rate,
         total: total,
-        old_stock: p.stock_quantity
+        old_stock: p.stock_quantity,
+        size: item.size || null,
+        color: item.color || null
       });
     }
 
@@ -84,11 +86,28 @@ exports.create = async (req, res) => {
       }
     }
 
-    const shipping = parseFloat(shipping_charge || 0);
-    // Dynamic GST rate (e.g. 5% on subtotal after discount)
-    const taxableAmount = subtotal - discount;
-    const gst = taxableAmount * 0.05;
-    const grandTotal = taxableAmount + gst + shipping;
+    // Fetch dynamic settings from database
+    const [settings] = await connection.query('SELECT key_name, value FROM settings');
+    const gstSetting = settings.find(s => s.key_name === 'gst_percentage');
+    const shipFixedSetting = settings.find(s => s.key_name === 'shipping_fixed');
+    const shipThresholdSetting = settings.find(s => s.key_name === 'shipping_threshold');
+
+    const gstPercent = gstSetting ? parseFloat(gstSetting.value) : 5;
+    const shippingFixed = shipFixedSetting ? parseFloat(shipFixedSetting.value) : 100;
+    const shippingThreshold = shipThresholdSetting ? parseFloat(shipThresholdSetting.value) : 1500;
+
+    // Dynamic shipping calculations
+    let calculatedShipping = subtotal >= shippingThreshold ? 0 : shippingFixed;
+    
+    // Support premium express shipping client additions if any
+    const clientShipping = parseFloat(shipping_charge || 0);
+    if (clientShipping > calculatedShipping) {
+      calculatedShipping = clientShipping;
+    }
+
+    const taxableAmount = Math.max(0, subtotal - discount);
+    const gst = parseFloat((taxableAmount * (gstPercent / 100)).toFixed(2));
+    const grandTotal = taxableAmount + gst + calculatedShipping;
 
     const orderNumber = generateOrderNumber();
     const orderDate = new Date().toISOString().slice(0, 10);
@@ -100,7 +119,7 @@ exports.create = async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
     `, [
       orderNumber, customer_name, customer_mobile, customer_email || null, shipping_address,
-      payment_method || 'COD', subtotal, discount, gst, shipping, grandTotal, orderDate
+      payment_method || 'COD', subtotal, discount, gst, calculatedShipping, grandTotal, orderDate
     ]);
 
     const orderId = orderResult.insertId;
@@ -108,9 +127,9 @@ exports.create = async (req, res) => {
     // D. Save Order Items & Reduce Stock & Log Alerts
     for (const vItem of validatedItems) {
       await connection.query(`
-        INSERT INTO order_items (order_id, product_id, quantity, price, total)
-        VALUES (?, ?, ?, ?, ?)
-      `, [orderId, vItem.product_id, vItem.quantity, vItem.price, vItem.total]);
+        INSERT INTO order_items (order_id, product_id, quantity, price, total, size, color)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [orderId, vItem.product_id, vItem.quantity, vItem.price, vItem.total, vItem.size, vItem.color]);
 
       // Automated stock reduction
       const newStock = vItem.old_stock - vItem.quantity;
@@ -159,8 +178,8 @@ exports.create = async (req, res) => {
     if (existingCust.length === 0) {
       // Auto-register customer profile inside customers ledger
       await connection.query(`
-        INSERT INTO customers (name, mobile, email, address, status)
-        VALUES (?, ?, ?, ?, 'active')
+        INSERT INTO customers (name, mobile, email, address, status, source)
+        VALUES (?, ?, ?, ?, 'active', 'Website')
       `, [customer_name, customer_mobile, customer_email || null, shipping_address]);
 
       await connection.query(`
@@ -251,6 +270,89 @@ exports.get = async (req, res) => {
   }
 };
 
+const getOrCreateInvoiceForOrder = async (connection, orderId) => {
+  // 1. Fetch order details
+  const [orders] = await connection.query(`
+    SELECT id, status, order_number, customer_name, customer_mobile, customer_email, 
+           shipping_address, payment_method, subtotal, discount, gst_amount, 
+           shipping_charge, grand_total, invoice_number 
+    FROM orders 
+    WHERE id = ? LIMIT 1
+  `, [orderId]);
+
+  if (orders.length === 0) {
+    throw new Error('Order not found');
+  }
+
+  const order = orders[0];
+
+  // If invoice already exists, fetch it from sales table and return its ID
+  if (order.invoice_number) {
+    const [sales] = await connection.query('SELECT id, invoice_number FROM sales WHERE invoice_number = ? LIMIT 1', [order.invoice_number]);
+    if (sales.length > 0) {
+      return { saleId: sales[0].id, invoiceNumber: sales[0].invoice_number };
+    }
+  }
+
+  // 2. Get or create customer ID matching order mobile
+  const [customers] = await connection.query('SELECT id FROM customers WHERE mobile = ? LIMIT 1', [order.customer_mobile]);
+  let customerId;
+  if (customers.length > 0) {
+    customerId = customers[0].id;
+  } else {
+    const [insertCust] = await connection.query(`
+      INSERT INTO customers (name, mobile, email, address, status, source)
+      VALUES (?, ?, ?, ?, 'active', 'Website')
+    `, [order.customer_name, order.customer_mobile, order.customer_email || null, order.shipping_address]);
+    customerId = insertCust.insertId;
+  }
+
+  // 3. Generate unique invoice number: INV-YYYYMMDD-XXXX
+  const [[{ maxId }]] = await connection.query('SELECT COALESCE(MAX(id), 0) as maxId FROM sales');
+  const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const invoiceNumber = `INV-${todayStr}-${String(maxId + 1).padStart(4, '0')}`;
+
+  // 4. Insert into sales table
+  const [saleResult] = await connection.query(`
+    INSERT INTO sales (invoice_number, order_number, customer_id, payment_method, subtotal, discount, gst_amount, shipping_charge, grand_total, status, sale_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Generated', CURDATE())
+  `, [
+    invoiceNumber,
+    order.order_number,
+    customerId,
+    order.payment_method || 'COD',
+    order.subtotal || 0,
+    order.discount || 0,
+    order.gst_amount || 0,
+    order.shipping_charge || 0,
+    order.grand_total || 0
+  ]);
+
+  const saleId = saleResult.insertId;
+
+  // 5. Fetch order items and insert into sale_items
+  const [orderItems] = await connection.query('SELECT product_id, size, quantity, price, total FROM order_items WHERE order_id = ?', [orderId]);
+  for (const item of orderItems) {
+    await connection.query(`
+      INSERT INTO sale_items (sale_id, product_id, size, quantity, rate, total)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      saleId,
+      item.product_id,
+      item.size || null,
+      item.quantity,
+      item.price,
+      item.total
+    ]);
+  }
+
+  // 6. Link invoice number back to the e-commerce order
+  await connection.query('UPDATE orders SET invoice_number = ? WHERE id = ?', [invoiceNumber, orderId]);
+  console.log(`Automatically generated invoice ${invoiceNumber} for order ${order.order_number}`);
+
+  return { saleId, invoiceNumber };
+};
+
 // 4. Update Order Status (Admin)
 exports.updateStatus = async (req, res) => {
   let connection;
@@ -258,7 +360,7 @@ exports.updateStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const validStatus = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
+    const validStatus = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Returned'];
     if (!status || !validStatus.includes(status)) {
       return res.status(400).json({ error: 'Invalid or missing status' });
     }
@@ -267,7 +369,13 @@ exports.updateStatus = async (req, res) => {
     await connection.beginTransaction();
 
     // Check order exists
-    const [orders] = await connection.query('SELECT status, order_number FROM orders WHERE id = ? LIMIT 1', [id]);
+    const [orders] = await connection.query(`
+      SELECT status, order_number, customer_name, customer_mobile, customer_email, 
+             shipping_address, payment_method, subtotal, discount, gst_amount, 
+             shipping_charge, grand_total, invoice_number 
+      FROM orders 
+      WHERE id = ? LIMIT 1
+    `, [id]);
     if (orders.length === 0) {
       throw new Error('Order not found');
     }
@@ -280,8 +388,8 @@ exports.updateStatus = async (req, res) => {
       return res.json({ success: true, message: `Status is already ${status}` });
     }
 
-    // A. Handle Cancellation Inventory Stock Reversal
-    if (status === 'Cancelled' && currentStatus !== 'Cancelled') {
+    // A. Handle Cancellation or Return Inventory Stock Reversal
+    if ((status === 'Cancelled' || status === 'Returned') && (currentStatus !== 'Cancelled' && currentStatus !== 'Returned')) {
       const [items] = await connection.query('SELECT product_id, quantity FROM order_items WHERE order_id = ?', [id]);
       
       for (const item of items) {
@@ -295,20 +403,21 @@ exports.updateStatus = async (req, res) => {
           // Log inventory history reversal
           await connection.query(`
             INSERT INTO inventory_history (product_id, change_quantity, action_type, reference_id, reference_number, notes)
-            VALUES (?, ?, 'E-commerce Order Cancel', ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
           `, [
             item.product_id,
             item.quantity,
+            status === 'Cancelled' ? 'E-commerce Order Cancel' : 'E-commerce Order Return',
             id,
             orderNumber,
-            `Stock auto-restored after order cancellation. Prev stock: ${p.stock_quantity}. New stock: ${restoredStock}.`
+            `Stock auto-restored after order ${status.toLowerCase()}. Prev stock: ${p.stock_quantity}. New stock: ${restoredStock}.`
           ]);
         }
       }
     }
 
-    // B. Handle Stock re-reduction if moving BACK from Cancelled to active status
-    if (currentStatus === 'Cancelled' && status !== 'Cancelled') {
+    // B. Handle Stock re-reduction if moving BACK from Cancelled/Returned to active status
+    if ((currentStatus === 'Cancelled' || currentStatus === 'Returned') && (status !== 'Cancelled' && status !== 'Returned')) {
       const [items] = await connection.query('SELECT product_id, quantity FROM order_items WHERE order_id = ?', [id]);
       
       for (const item of items) {
@@ -316,7 +425,7 @@ exports.updateStatus = async (req, res) => {
         if (products.length > 0) {
           const p = products[0];
           if (p.stock_quantity < item.quantity) {
-            throw new Error(`Insufficient stock for product ${p.name} to revert cancellation. Only ${p.stock_quantity} left.`);
+            throw new Error(`Insufficient stock for product ${p.name} to revert ${currentStatus.toLowerCase()} status. Only ${p.stock_quantity} left.`);
           }
 
           const reducedStock = p.stock_quantity - item.quantity;
@@ -339,6 +448,11 @@ exports.updateStatus = async (req, res) => {
 
     // C. Update parent Order Status
     await connection.query('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
+
+    // D. Generate Invoice automatically if status changed to 'Delivered'
+    if (status === 'Delivered' && currentStatus !== 'Delivered') {
+      await getOrCreateInvoiceForOrder(connection, id);
+    }
 
     await connection.commit();
     res.json({ success: true, message: `Order status updated to ${status} successfully!` });
@@ -373,5 +487,94 @@ exports.track = async (req, res) => {
     res.json({ success: true, order });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+// 6. Get Order Dashboard Summary counts (Admin)
+exports.summary = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'Processing' THEN 1 ELSE 0 END) AS processing,
+        SUM(CASE WHEN status = 'Delivered' THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled,
+        SUM(CASE WHEN status = 'Returned' THEN 1 ELSE 0 END) AS returned
+      FROM orders
+    `);
+
+    const summary = {
+      total: rows[0].total || 0,
+      pending: parseInt(rows[0].pending) || 0,
+      processing: parseInt(rows[0].processing) || 0,
+      completed: parseInt(rows[0].completed) || 0,
+      cancelled: parseInt(rows[0].cancelled) || 0,
+      returned: parseInt(rows[0].returned) || 0
+    };
+
+    res.json({
+      success: true,
+      summary
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+// 7. Get or generate invoice for E-Commerce order
+exports.getInvoice = async (req, res) => {
+  let connection;
+  try {
+    const { id } = req.params;
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const result = await getOrCreateInvoiceForOrder(connection, id);
+
+    await connection.commit();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    res.status(500).json({ error: error.message || 'Failed to generate or retrieve invoice.' });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+// 8. Delete E-Commerce Order
+exports.delete = async (req, res) => {
+  let connection;
+  try {
+    const { id } = req.params;
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    // Fetch order to verify existence and check status
+    const [orders] = await connection.query('SELECT status, invoice_number FROM orders WHERE id = ? LIMIT 1', [id]);
+    if (orders.length === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const order = orders[0];
+    
+    // Prevent accidental deletion of completed (Delivered) orders
+    if (order.status === 'Delivered') {
+      return res.status(400).json({ error: 'Cannot delete a completed (Delivered) order. Please cancel or return it first if needed.' });
+    }
+
+    // Delete order items
+    await connection.query('DELETE FROM order_items WHERE order_id = ?', [id]);
+
+    // Delete order
+    await connection.query('DELETE FROM orders WHERE id = ?', [id]);
+
+    await connection.commit();
+    res.json({ success: true, message: 'Order deleted successfully!' });
+  } catch (error) {
+    if (connection) await connection.rollback();
+    res.status(500).json({ error: error.message || 'Failed to delete order.' });
+  } finally {
+    if (connection) connection.release();
   }
 };

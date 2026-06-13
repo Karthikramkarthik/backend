@@ -26,6 +26,7 @@ const purchaseRoutes = require('./routes/purchaseRoutes');
 const salesRoutes = require('./routes/salesRoutes');
 const fileManagerRoutes = require('./routes/fileManagerRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const searchRoutes = require('./routes/searchRoutes');
 
 // Import new e-commerce and admin routes
 const orderRoutes = require('./routes/orderRoutes');
@@ -38,6 +39,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const adminReviewRoutes = require('./routes/adminReviewRoutes');
 const adminNotificationRoutes = require('./routes/adminNotificationRoutes');
 const instagramRoutes = require('./routes/instagramRoutes');
+const systemSettingsRoutes = require('./routes/systemSettingsRoutes');
 
 // Bind Routes
 app.use('/api/auth', authRoutes);
@@ -51,6 +53,7 @@ app.use('/api/purchases', purchaseRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/file-manager', fileManagerRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/search', searchRoutes);
 
 // Bind new routes
 app.use('/api/orders', orderRoutes);
@@ -63,6 +66,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin/reviews', adminReviewRoutes);
 app.use('/api/admin/notifications', adminNotificationRoutes);
 app.use('/api/instagram', instagramRoutes);
+app.use('/api/settings', systemSettingsRoutes);
 
 // Base route
 app.get('/', (req, res) => {

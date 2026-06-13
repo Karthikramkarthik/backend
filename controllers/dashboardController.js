@@ -3,39 +3,48 @@ const db = require('../config/database');
 exports.getMetrics = async (req, res) => {
   try {
     // 1. Fetch count stats
-    const [[{ invoices }]] = await db.query('SELECT count(*) AS invoices FROM sales');
+    const [[{ invoices }]] = await db.query('SELECT count(*) AS invoices FROM sales WHERE order_number IS NULL');
     const [[{ customers }]] = await db.query('SELECT count(*) AS customers FROM customers');
     const [[{ suppliers }]] = await db.query('SELECT count(*) AS suppliers FROM suppliers');
     const [[{ products }]] = await db.query('SELECT COUNT(DISTINCT code) AS products FROM products');
     const [[{ purchases }]] = await db.query('SELECT COALESCE(SUM(total_amount), 0) AS purchases FROM purchases');
-    const [[{ sales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) AS sales FROM sales');
+    const [[{ sales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) AS sales FROM sales WHERE order_number IS NULL');
     const [[{ low_stock }]] = await db.query('SELECT COUNT(DISTINCT code) AS low_stock FROM products WHERE stock_quantity <= 10');
     
     // E-Commerce Orders stats
     const [[{ total_orders }]] = await db.query('SELECT count(*) AS total_orders FROM orders');
     const [[{ pending_orders }]] = await db.query('SELECT count(*) AS pending_orders FROM orders WHERE status = "Pending"');
-    const [[{ ecom_sales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) AS ecom_sales FROM orders WHERE status != "Cancelled"');
+    const [[{ ecom_sales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) AS ecom_sales FROM orders WHERE status NOT IN ("Cancelled", "Returned")');
 
     // Calculate Profit: (Store Sales + Ecom Sales - Store Shipping - Ecom Shipping - COGS)
     // We fetch COGS for store sales first:
     const [[{ store_cogs }]] = await db.query(`
-      SELECT COALESCE(SUM(p.purchase_price * si.quantity), 0) AS cogs 
+      SELECT COALESCE(SUM(p.purchase_price * si.quantity), 0) AS store_cogs 
       FROM sale_items si 
       JOIN products p ON si.product_id = p.id
+      JOIN sales s ON si.sale_id = s.id
+      WHERE s.order_number IS NULL
     `);
     
     // COGS for e-commerce orders:
     const [[{ ecom_cogs }]] = await db.query(`
-      SELECT COALESCE(SUM(p.purchase_price * oi.quantity), 0) AS cogs 
+      SELECT COALESCE(SUM(p.purchase_price * oi.quantity), 0) AS ecom_cogs 
       FROM order_items oi 
       JOIN products p ON oi.product_id = p.id
       JOIN orders o ON oi.order_id = o.id
-      WHERE o.status != 'Cancelled'
+      WHERE o.status NOT IN ('Cancelled', 'Returned')
     `);
 
-    const [[{ store_shipping }]] = await db.query('SELECT COALESCE(SUM(shipping_charge), 0) as s FROM sales');
+    const [[{ store_shipping_val }]] = await db.query('SELECT COALESCE(SUM(shipping_charge), 0) as store_shipping_val FROM sales WHERE order_number IS NULL');
+    const [[{ ecom_shipping_val }]] = await db.query('SELECT COALESCE(SUM(shipping_charge), 0) as ecom_shipping_val FROM orders WHERE status NOT IN ("Cancelled", "Returned")');
+
+    const store_shipping = parseFloat(store_shipping_val || 0);
+    const ecom_shipping = parseFloat(ecom_shipping_val || 0);
+    const totalShipping = store_shipping + ecom_shipping;
+
     const totalRevenue = parseFloat(sales) + parseFloat(ecom_sales);
-    const totalProfit = parseFloat(sales) - parseFloat(store_shipping) + parseFloat(ecom_sales) - parseFloat(store_cogs) - parseFloat(ecom_cogs);
+    const totalProfit = parseFloat(sales) - store_shipping + parseFloat(ecom_sales) - ecom_shipping - parseFloat(store_cogs) - parseFloat(ecom_cogs);
+
 
     // 2. Fetch recent purchases
     const [recentPurchases] = await db.query(`
@@ -50,6 +59,7 @@ exports.getMetrics = async (req, res) => {
       SELECT s.id, s.invoice_number, c.name as customer, s.grand_total, DATE_FORMAT(s.sale_date, '%Y-%m-%d') as sale_date 
       FROM sales s 
       JOIN customers c ON s.customer_id = c.id 
+      WHERE s.order_number IS NULL
       ORDER BY s.created_at DESC LIMIT 5
     `);
 
@@ -64,9 +74,9 @@ exports.getMetrics = async (req, res) => {
     const [topSellingProducts] = await db.query(`
       SELECT p.id, p.name, p.code, p.image, SUM(combined.qty) as total_qty, SUM(combined.tot) as total_revenue
       FROM (
-        SELECT product_id, quantity as qty, total as tot FROM sale_items
+        SELECT product_id, quantity as qty, total as tot FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.order_number IS NULL
         UNION ALL
-        SELECT product_id, quantity as qty, total as tot FROM order_items
+        SELECT product_id, quantity as qty, total as tot FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.status NOT IN ('Cancelled', 'Returned')
       ) combined
       JOIN products p ON combined.product_id = p.id
       GROUP BY p.id, p.name, p.code, p.image
@@ -86,7 +96,7 @@ exports.getMetrics = async (req, res) => {
             WHERE si.sale_id = s.id
         ), 0)) AS cogs
       FROM sales s
-      WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+      WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND s.order_number IS NULL
       GROUP BY s.sale_date
       ORDER BY s.sale_date ASC
     `);
@@ -103,7 +113,7 @@ exports.getMetrics = async (req, res) => {
             WHERE oi.order_id = o.id
         ), 0)) AS cogs
       FROM orders o
-      WHERE o.order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status != 'Cancelled'
+      WHERE o.order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status NOT IN ('Cancelled', 'Returned')
       GROUP BY o.order_date
       ORDER BY o.order_date ASC
     `);
@@ -171,7 +181,10 @@ exports.getMetrics = async (req, res) => {
         pending_orders: parseInt(pending_orders),
         ecom_sales: parseFloat(ecom_sales),
         total_revenue: totalRevenue,
-        profit: parseFloat(totalProfit.toFixed(2))
+        profit: parseFloat(totalProfit.toFixed(2)),
+        store_shipping: store_shipping,
+        ecom_shipping: ecom_shipping,
+        total_shipping: totalShipping
       },
       recentPurchases,
       recentSales,
