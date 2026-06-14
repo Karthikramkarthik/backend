@@ -1,42 +1,50 @@
 const db = require('../config/database');
 
+let reportsCache = null;
+let reportsCacheTime = 0;
+const CACHE_DURATION = 15000; // 15 seconds cache duration
+
 // Helper to fetch period financials
 const fetchPeriodFinancialStats = async (startDate, endDate) => {
-  // Sales & COGS
-  const [[sales]] = await db.query(`
-    SELECT 
-      COALESCE(SUM(grand_total), 0) AS revenue,
-      COALESCE(SUM((
-          SELECT SUM(p.purchase_price * si.quantity)
-          FROM sale_items si
-          JOIN products p ON si.product_id = p.id
-          WHERE si.sale_id = s.id
-      )), 0) AS cogs
-    FROM sales s
-    WHERE s.sale_date BETWEEN ? AND ?
-  `, [startDate, endDate]);
+  const [
+    [[{ revenue }]],
+    [[{ cogs }]],
+    [[{ purchases }]],
+    [[{ expenses }]]
+  ] = await Promise.all([
+    // Sales Revenue
+    db.query(`
+      SELECT COALESCE(SUM(grand_total), 0) AS revenue
+      FROM sales
+      WHERE sale_date BETWEEN ? AND ?
+    `, [startDate, endDate]),
+    // Sales COGS
+    db.query(`
+      SELECT COALESCE(SUM(p.purchase_price * si.quantity), 0) AS cogs
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      JOIN products p ON si.product_id = p.id
+      WHERE s.sale_date BETWEEN ? AND ?
+    `, [startDate, endDate]),
+    // Purchases
+    db.query(`
+      SELECT COALESCE(SUM(total_amount), 0) AS purchases 
+      FROM purchases 
+      WHERE purchase_date BETWEEN ? AND ?
+    `, [startDate, endDate]),
+    // Expenses
+    db.query(`
+      SELECT COALESCE(SUM(amount), 0) AS expenses 
+      FROM expenses 
+      WHERE expense_date BETWEEN ? AND ?
+    `, [startDate, endDate])
+  ]);
 
-  // Purchases
-  const [[{ purchases }]] = await db.query(`
-    SELECT COALESCE(SUM(total_amount), 0) AS purchases 
-    FROM purchases 
-    WHERE purchase_date BETWEEN ? AND ?
-  `, [startDate, endDate]);
-
-  // Expenses
-  const [[{ expenses }]] = await db.query(`
-    SELECT COALESCE(SUM(amount), 0) AS expenses 
-    FROM expenses 
-    WHERE expense_date BETWEEN ? AND ?
-  `, [startDate, endDate]);
-
-  const revenue = parseFloat(sales.revenue || 0);
-  const cogs = parseFloat(sales.cogs || 0);
-  const grossProfit = revenue - cogs;
+  const grossProfit = parseFloat(revenue || 0) - parseFloat(cogs || 0);
   const netProfit = grossProfit - parseFloat(expenses || 0);
 
   return {
-    revenue,
+    revenue: parseFloat(revenue || 0),
     net_profit: netProfit,
     purchases: parseFloat(purchases || 0),
     expenses: parseFloat(expenses || 0)
@@ -52,11 +60,16 @@ const calculatePercentageGrowth = (current, previous) => {
 
 exports.getReports = async (req, res) => {
   try {
-    // 1. Generate 12-Month Financial Timeline Data
+    const now = Date.now();
+    if (reportsCache && (now - reportsCacheTime < CACHE_DURATION)) {
+      return res.json(reportsCache);
+    }
+
+    // 1. Generate 12-Month Financial Timeline Data structure
     const months = {};
     for (let i = 11; i >= 0; i--) {
       const d = new Date();
-      d.setDate(1); // Set day to 1st to prevent month rollover anomalies (e.g. Feb 29/30/31 rolling over)
+      d.setDate(1); // Set day to 1st to prevent month rollover anomalies
       d.setMonth(d.getMonth() - i);
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
@@ -74,55 +87,200 @@ exports.getReports = async (req, res) => {
       };
     }
 
-    // Fetch monthly sales and COGS
-    const [salesTimeline] = await db.query(`
-      SELECT 
-        DATE_FORMAT(s.sale_date, '%Y-%m') AS month_key,
-        SUM(s.grand_total) AS revenue,
-        SUM(COALESCE((
-            SELECT SUM(p.purchase_price * si.quantity)
-            FROM sale_items si
-            JOIN products p ON si.product_id = p.id
-            WHERE si.sale_id = s.id
-        ), 0)) AS cogs
-      FROM sales s
-      WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-      GROUP BY month_key
-    `);
+    const today = new Date().toISOString().slice(0, 10);
+    const yestDate = new Date();
+    yestDate.setDate(yestDate.getDate() - 1);
+    const yesterday = yestDate.toISOString().slice(0, 10);
 
-    salesTimeline.forEach(row => {
+    const d = new Date();
+    const thisMonthStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    const thisMonthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+    const lastMonthD = new Date();
+    lastMonthD.setMonth(lastMonthD.getMonth() - 1);
+    const lastMonthStart = `${lastMonthD.getFullYear()}-${String(lastMonthD.getMonth() + 1).padStart(2, '0')}-01`;
+    const lastMonthEnd = new Date(lastMonthD.getFullYear(), lastMonthD.getMonth() + 1, 0).toISOString().slice(0, 10);
+
+    const thisYearStart = `${d.getFullYear()}-01-01`;
+    const thisYearEnd = `${d.getFullYear()}-12-31`;
+
+    const lastYearStart = `${d.getFullYear() - 1}-01-01`;
+    const lastYearEnd = `${d.getFullYear() - 1}-12-31`;
+
+    // Fetch all analytics components in parallel
+    const [
+      [
+        todayStats,
+        yesterdayStats,
+        thisMonthStats,
+        lastMonthStats,
+        thisYearStats,
+        lastYearStats
+      ],
+      [
+        salesRevenueTimeline,
+        salesCogsTimeline,
+        purchasesTimeline,
+        expensesTimeline
+      ],
+      [topSelling],
+      [slowMoving],
+      [supplierAnalytics],
+      [expenseCategories],
+      [stockReport],
+      [priceAudits],
+      [allProductSales],
+      [[{ totalSales }]],
+      [[{ totalPurchases }]],
+      [[{ totalExpenses }]]
+    ] = await Promise.all([
+      // A. Period stats
+      Promise.all([
+        fetchPeriodFinancialStats(today, today),
+        fetchPeriodFinancialStats(yesterday, yesterday),
+        fetchPeriodFinancialStats(thisMonthStart, thisMonthEnd),
+        fetchPeriodFinancialStats(lastMonthStart, lastMonthEnd),
+        fetchPeriodFinancialStats(thisYearStart, thisYearEnd),
+        fetchPeriodFinancialStats(lastYearStart, lastYearEnd)
+      ]),
+      // B. Monthly timeline queries without correlated subqueries
+      Promise.all([
+        db.query(`
+          SELECT DATE_FORMAT(sale_date, '%Y-%m') AS month_key, SUM(grand_total) AS revenue
+          FROM sales
+          WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          GROUP BY month_key
+        `),
+        db.query(`
+          SELECT DATE_FORMAT(s.sale_date, '%Y-%m') AS month_key, SUM(p.purchase_price * si.quantity) AS cogs
+          FROM sale_items si
+          JOIN sales s ON si.sale_id = s.id
+          JOIN products p ON si.product_id = p.id
+          WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          GROUP BY month_key
+        `),
+        db.query(`
+          SELECT DATE_FORMAT(purchase_date, '%Y-%m') AS month_key, SUM(total_amount) AS total_purchases
+          FROM purchases
+          WHERE purchase_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          GROUP BY month_key
+        `),
+        db.query(`
+          SELECT DATE_FORMAT(expense_date, '%Y-%m') AS month_key, SUM(amount) AS total_expenses
+          FROM expenses
+          WHERE expense_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          GROUP BY month_key
+        `)
+      ]),
+      // C. Top-selling products
+      db.query(`
+        SELECT 
+          p.code,
+          p.name,
+          c.name AS category_name,
+          SUM(si.quantity) AS units_sold,
+          SUM(si.total) AS total_revenue
+        FROM sale_items si
+        JOIN products p ON si.product_id = p.id
+        LEFT JOIN categories c ON p.category_id = c.id
+        GROUP BY p.id
+        ORDER BY units_sold DESC
+        LIMIT 10
+      `),
+      // D. Slow moving products
+      db.query(`
+        SELECT 
+          p.code,
+          p.name,
+          c.name AS category_name,
+          p.stock_quantity,
+          p.purchase_price,
+          (p.stock_quantity * p.purchase_price) AS capital_locked,
+          COALESCE(SUM(si.quantity), 0) AS units_sold,
+          DATE_FORMAT(MAX(s.sale_date), '%Y-%m-%d') AS last_sold
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN sale_items si ON p.id = si.product_id
+        LEFT JOIN sales s ON si.sale_id = s.id
+        WHERE p.status = 'active'
+        GROUP BY p.id
+        ORDER BY units_sold ASC, p.stock_quantity DESC
+        LIMIT 10
+      `),
+      // E. Supplier analytics
+      db.query(`
+        SELECT 
+          s.name AS supplier_name,
+          COUNT(p.id) AS bills_count,
+          SUM(p.total_amount) AS total_purchased,
+          AVG(p.total_amount) AS avg_invoice
+        FROM purchases p
+        JOIN suppliers s ON p.supplier_id = s.id
+        GROUP BY s.id
+        ORDER BY total_purchased DESC
+      `),
+      // F. Expense categories
+      db.query(`
+        SELECT 
+          category,
+          SUM(amount) AS total_amount,
+          COUNT(id) AS transaction_count
+        FROM expenses
+        GROUP BY category
+        ORDER BY total_amount DESC
+      `),
+      // G. Stock report
+      db.query(`
+        SELECT p.code, p.name, c.name as category_name, p.stock_quantity, p.initial_stock_quantity, p.status 
+        FROM products p 
+        LEFT JOIN categories c ON p.category_id = c.id
+        ORDER BY p.stock_quantity ASC
+      `),
+      // H. Price audits
+      db.query(`
+        SELECT * 
+        FROM price_audit_log 
+        ORDER BY id DESC
+      `),
+      // I. All product sales
+      db.query(`
+        SELECT 
+          p.code,
+          p.name,
+          c.name AS category_name,
+          COALESCE(SUM(si.quantity), 0) AS units_sold,
+          COALESCE(SUM(si.total), 0) AS total_revenue
+        FROM products p
+        LEFT JOIN sale_items si ON p.id = si.product_id
+        LEFT JOIN categories c ON p.category_id = c.id
+        GROUP BY p.id
+        ORDER BY units_sold DESC, total_revenue DESC
+      `),
+      // J. Aggregated totals
+      db.query('SELECT COALESCE(SUM(grand_total), 0) as totalSales FROM sales'),
+      db.query('SELECT COALESCE(SUM(total_amount), 0) as totalPurchases FROM purchases'),
+      db.query('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses')
+    ]);
+
+    // Map the timeline datasets
+    salesRevenueTimeline.forEach(row => {
       if (months[row.month_key]) {
         months[row.month_key].revenue = parseFloat(row.revenue);
-        months[row.month_key].cogs = parseFloat(row.cogs);
-        months[row.month_key].gross_profit = parseFloat(row.revenue) - parseFloat(row.cogs);
       }
     });
 
-    // Fetch monthly purchases
-    const [purchasesTimeline] = await db.query(`
-      SELECT 
-        DATE_FORMAT(purchase_date, '%Y-%m') AS month_key,
-        SUM(total_amount) AS total_purchases
-      FROM purchases
-      WHERE purchase_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-      GROUP BY month_key
-    `);
+    salesCogsTimeline.forEach(row => {
+      if (months[row.month_key]) {
+        months[row.month_key].cogs = parseFloat(row.cogs);
+        months[row.month_key].gross_profit = months[row.month_key].revenue - parseFloat(row.cogs);
+      }
+    });
 
     purchasesTimeline.forEach(row => {
       if (months[row.month_key]) {
         months[row.month_key].purchases = parseFloat(row.total_purchases);
       }
     });
-
-    // Fetch monthly expenses
-    const [expensesTimeline] = await db.query(`
-      SELECT 
-        DATE_FORMAT(expense_date, '%Y-%m') AS month_key,
-        SUM(amount) AS total_expenses
-      FROM expenses
-      WHERE expense_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
-      GROUP BY month_key
-    `);
 
     expensesTimeline.forEach(row => {
       if (months[row.month_key]) {
@@ -152,136 +310,7 @@ exports.getReports = async (req, res) => {
       timelineOutgoings.push(data.purchases + data.expenses);
     });
 
-    // 2. Period over Period Stats
-    const today = new Date().toISOString().slice(0, 10);
-    
-    const yestDate = new Date();
-    yestDate.setDate(yestDate.getDate() - 1);
-    const yesterday = yestDate.toISOString().slice(0, 10);
-
-    // This month dates
-    const d = new Date();
-    const thisMonthStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
-    const thisMonthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
-
-    // Last month dates
-    const lastMonthD = new Date();
-    lastMonthD.setMonth(lastMonthD.getMonth() - 1);
-    const lastMonthStart = `${lastMonthD.getFullYear()}-${String(lastMonthD.getMonth() + 1).padStart(2, '0')}-01`;
-    const lastMonthEnd = new Date(lastMonthD.getFullYear(), lastMonthD.getMonth() + 1, 0).toISOString().slice(0, 10);
-
-    // This year dates
-    const thisYearStart = `${d.getFullYear()}-01-01`;
-    const thisYearEnd = `${d.getFullYear()}-12-31`;
-
-    // Last year dates
-    const lastYearStart = `${d.getFullYear() - 1}-01-01`;
-    const lastYearEnd = `${d.getFullYear() - 1}-12-31`;
-
-    const todayStats = await fetchPeriodFinancialStats(today, today);
-    const yesterdayStats = await fetchPeriodFinancialStats(yesterday, yesterday);
-    const thisMonthStats = await fetchPeriodFinancialStats(thisMonthStart, thisMonthEnd);
-    const lastMonthStats = await fetchPeriodFinancialStats(lastMonthStart, lastMonthEnd);
-    const thisYearStats = await fetchPeriodFinancialStats(thisYearStart, thisYearEnd);
-    const lastYearStats = await fetchPeriodFinancialStats(lastYearStart, lastYearEnd);
-
-    // 3. Top-selling products
-    const [topSelling] = await db.query(`
-      SELECT 
-        p.code,
-        p.name,
-        c.name AS category_name,
-        SUM(si.quantity) AS units_sold,
-        SUM(si.total) AS total_revenue
-      FROM sale_items si
-      JOIN products p ON si.product_id = p.id
-      LEFT JOIN categories c ON p.category_id = c.id
-      GROUP BY p.id
-      ORDER BY units_sold DESC
-      LIMIT 10
-    `);
-
-    // 4. Slow-moving products (high stock, low sales)
-    const [slowMoving] = await db.query(`
-      SELECT 
-        p.code,
-        p.name,
-        c.name AS category_name,
-        p.stock_quantity,
-        p.purchase_price,
-        (p.stock_quantity * p.purchase_price) AS capital_locked,
-        COALESCE(SUM(si.quantity), 0) AS units_sold,
-        DATE_FORMAT(MAX(s.sale_date), '%Y-%m-%d') AS last_sold
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN sale_items si ON p.id = si.product_id
-      LEFT JOIN sales s ON si.sale_id = s.id
-      WHERE p.status = 'active'
-      GROUP BY p.id
-      ORDER BY units_sold ASC, p.stock_quantity DESC
-      LIMIT 10
-    `);
-
-    // 5. Supplier Analytics
-    const [supplierAnalytics] = await db.query(`
-      SELECT 
-        s.name AS supplier_name,
-        COUNT(p.id) AS bills_count,
-        SUM(p.total_amount) AS total_purchased,
-        AVG(p.total_amount) AS avg_invoice
-      FROM purchases p
-      JOIN suppliers s ON p.supplier_id = s.id
-      GROUP BY s.id
-      ORDER BY total_purchased DESC
-    `);
-
-    // 6. Expense Breakdown by Category
-    const [expenseCategories] = await db.query(`
-      SELECT 
-        category,
-        SUM(amount) AS total_amount,
-        COUNT(id) AS transaction_count
-      FROM expenses
-      GROUP BY category
-      ORDER BY total_amount DESC
-    `);
-
-    // 7. Stock Report list
-    const [stockReport] = await db.query(`
-      SELECT p.code, p.name, c.name as category_name, p.stock_quantity, p.initial_stock_quantity, p.status 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id
-      ORDER BY p.stock_quantity ASC
-    `);
-
-    // 8. Price Audit Log
-    const [priceAudits] = await db.query(`
-      SELECT * 
-      FROM price_audit_log 
-      ORDER BY id DESC
-    `);
-
-    // 9. All Product Sales list
-    const [allProductSales] = await db.query(`
-      SELECT 
-        p.code,
-        p.name,
-        c.name AS category_name,
-        COALESCE(SUM(si.quantity), 0) AS units_sold,
-        COALESCE(SUM(si.total), 0) AS total_revenue
-      FROM products p
-      LEFT JOIN sale_items si ON p.id = si.product_id
-      LEFT JOIN categories c ON p.category_id = c.id
-      GROUP BY p.id
-      ORDER BY units_sold DESC, total_revenue DESC
-    `);
-
-    // Calculate aggregated totals
-    const [[{ totalSales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) as totalSales FROM sales');
-    const [[{ totalPurchases }]] = await db.query('SELECT COALESCE(SUM(total_amount), 0) as totalPurchases FROM purchases');
-    const [[{ totalExpenses }]] = await db.query('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses');
-
-    res.json({
+    const jsonResponse = {
       success: true,
       totals: {
         sales: parseFloat(totalSales),
@@ -321,12 +350,20 @@ exports.getReports = async (req, res) => {
       stockReport,
       priceAudits,
       allProductSales
-    });
+    };
 
+    // Store in cache
+    reportsCache = jsonResponse;
+    reportsCacheTime = now;
+
+    res.json(jsonResponse);
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };
+
+  
+
 
 exports.customersByProduct = async (req, res) => {
   try {

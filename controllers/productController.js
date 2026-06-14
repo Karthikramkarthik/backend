@@ -51,7 +51,16 @@ exports.list = async (req, res) => {
   try {
     const query = req.query.q || '';
     const categoryId = parseInt(req.query.category) || 0;
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 0;
 
+    let countSql = `
+      SELECT COUNT(DISTINCT p.id) as total
+      FROM products p 
+      LEFT JOIN categories c ON p.category_id = c.id 
+      LEFT JOIN suppliers s ON p.supplier_id = s.id
+      WHERE 1=1
+    `;
     let sql = `
       SELECT p.*, c.name as category_name, s.name as supplier_name 
       FROM products p 
@@ -60,23 +69,47 @@ exports.list = async (req, res) => {
       WHERE 1=1
     `;
     const params = [];
+    const countParams = [];
 
     if (query) {
-      sql += ' AND (p.name LIKE ? OR p.code LIKE ?)';
+      const searchFilter = ' AND (p.name LIKE ? OR p.code LIKE ?)';
+      sql += searchFilter;
+      countSql += searchFilter;
       params.push(`%${query}%`, `%${query}%`);
+      countParams.push(`%${query}%`, `%${query}%`);
     }
 
     if (categoryId > 0) {
-      sql += ' AND p.category_id = ?';
+      const categoryFilter = ' AND p.category_id = ?';
+      sql += categoryFilter;
+      countSql += categoryFilter;
       params.push(categoryId);
+      countParams.push(categoryId);
     }
 
     sql += ' ORDER BY p.name ASC';
 
+    let total = 0;
+    if (page > 0 && limit > 0) {
+      const [[countResult]] = await db.query(countSql, countParams);
+      total = countResult.total;
+
+      const offset = (page - 1) * limit;
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(limit, offset);
+    }
+
     const [products] = await db.query(sql, params);
 
-    // Fetch variants for all products
-    const [variants] = await db.query('SELECT * FROM product_variants');
+    // Fetch variants and colors only for the fetched products (IN list)
+    let variants = [];
+    let colors = [];
+    if (products.length > 0) {
+      const productIds = products.map(p => p.id);
+      [variants] = await db.query('SELECT * FROM product_variants WHERE product_id IN (?)', [productIds]);
+      [colors] = await db.query('SELECT * FROM product_colors WHERE product_id IN (?)', [productIds]);
+    }
+
     const variantsByProduct = {};
     variants.forEach(v => {
       if (!variantsByProduct[v.product_id]) {
@@ -85,8 +118,6 @@ exports.list = async (req, res) => {
       variantsByProduct[v.product_id].push(v);
     });
 
-    // Fetch colors for all products
-    const [colors] = await db.query('SELECT * FROM product_colors');
     const colorsByProduct = {};
     colors.forEach(c => {
       if (!colorsByProduct[c.product_id]) {
@@ -101,7 +132,20 @@ exports.list = async (req, res) => {
       p.colors = colorsByProduct[p.id] || [];
     });
 
-    res.json({ success: true, products });
+    if (page > 0 && limit > 0) {
+      res.json({
+        success: true,
+        products,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit)
+        }
+      });
+    } else {
+      res.json({ success: true, products });
+    }
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }

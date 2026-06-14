@@ -76,9 +76,9 @@
     {
       "Table": "purchase_items",
       "Non_unique": 1,
-      "Key_name": "purchase_id",
+      "Key_name": "idx_purchase_items_product",
       "Seq_in_index": 1,
-      "Column_name": "purchase_id",
+      "Column_name": "product_id",
       "Collation": "A",
       "Cardinality": 0,
       "Sub_part": null,
@@ -91,9 +91,9 @@
     {
       "Table": "purchase_items",
       "Non_unique": 1,
-      "Key_name": "product_id",
+      "Key_name": "idx_purchase_items_purchase",
       "Seq_in_index": 1,
-      "Column_name": "product_id",
+      "Column_name": "purchase_id",
       "Collation": "A",
       "Cardinality": 0,
       "Sub_part": null,

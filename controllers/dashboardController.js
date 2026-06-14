@@ -1,42 +1,144 @@
 const db = require('../config/database');
 
+let metricsCache = null;
+let metricsCacheTime = 0;
+const CACHE_DURATION = 15000; // 15 seconds cache duration
+
 exports.getMetrics = async (req, res) => {
   try {
-    // 1. Fetch count stats
-    const [[{ invoices }]] = await db.query('SELECT count(*) AS invoices FROM sales WHERE order_number IS NULL');
-    const [[{ customers }]] = await db.query('SELECT count(*) AS customers FROM customers');
-    const [[{ suppliers }]] = await db.query('SELECT count(*) AS suppliers FROM suppliers');
-    const [[{ products }]] = await db.query('SELECT COUNT(DISTINCT code) AS products FROM products');
-    const [[{ purchases }]] = await db.query('SELECT COALESCE(SUM(total_amount), 0) AS purchases FROM purchases');
-    const [[{ sales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) AS sales FROM sales WHERE order_number IS NULL');
-    const [[{ low_stock }]] = await db.query('SELECT COUNT(DISTINCT code) AS low_stock FROM products WHERE stock_quantity <= 10');
-    
-    // E-Commerce Orders stats
-    const [[{ total_orders }]] = await db.query('SELECT count(*) AS total_orders FROM orders');
-    const [[{ pending_orders }]] = await db.query('SELECT count(*) AS pending_orders FROM orders WHERE status = "Pending"');
-    const [[{ ecom_sales }]] = await db.query('SELECT COALESCE(SUM(grand_total), 0) AS ecom_sales FROM orders WHERE status NOT IN ("Cancelled", "Returned")');
+    const now = Date.now();
+    if (metricsCache && (now - metricsCacheTime < CACHE_DURATION)) {
+      return res.json(metricsCache);
+    }
 
-    // Calculate Profit: (Store Sales + Ecom Sales - Store Shipping - Ecom Shipping - COGS)
-    // We fetch COGS for store sales first:
-    const [[{ store_cogs }]] = await db.query(`
-      SELECT COALESCE(SUM(p.purchase_price * si.quantity), 0) AS store_cogs 
-      FROM sale_items si 
-      JOIN products p ON si.product_id = p.id
-      JOIN sales s ON si.sale_id = s.id
-      WHERE s.order_number IS NULL
-    `);
-    
-    // COGS for e-commerce orders:
-    const [[{ ecom_cogs }]] = await db.query(`
-      SELECT COALESCE(SUM(p.purchase_price * oi.quantity), 0) AS ecom_cogs 
-      FROM order_items oi 
-      JOIN products p ON oi.product_id = p.id
-      JOIN orders o ON oi.order_id = o.id
-      WHERE o.status NOT IN ('Cancelled', 'Returned')
-    `);
+    // Run all database queries in parallel
+    const [
+      [[counts]],
+      [[{ store_cogs }]],
+      [[{ ecom_cogs }]],
+      [recentPurchases],
+      [recentSales],
+      [recentOrders],
+      [topSellingProducts],
+      [dailyRevenueStats],
+      [dailyCogsStats],
+      [dailyEcomRevenueStats],
+      [dailyEcomCogsStats]
+    ] = await Promise.all([
+      // 1. Consolidated count and sum stats
+      db.query(`
+        SELECT
+          (SELECT count(*) FROM sales WHERE order_number IS NULL) AS invoices,
+          (SELECT count(*) FROM customers) AS customers,
+          (SELECT count(*) FROM suppliers) AS suppliers,
+          (SELECT COUNT(DISTINCT code) FROM products) AS products,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM purchases) AS purchases,
+          (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE order_number IS NULL) AS sales,
+          (SELECT COUNT(DISTINCT code) FROM products WHERE stock_quantity <= 10) AS low_stock,
+          (SELECT count(*) FROM orders) AS total_orders,
+          (SELECT count(*) FROM orders WHERE status = 'Pending') AS pending_orders,
+          (SELECT COALESCE(SUM(grand_total), 0) FROM orders WHERE status NOT IN ('Cancelled', 'Returned')) AS ecom_sales,
+          (SELECT COALESCE(SUM(shipping_charge), 0) FROM sales WHERE order_number IS NULL) as store_shipping_val,
+          (SELECT COALESCE(SUM(shipping_charge), 0) FROM orders WHERE status NOT IN ('Cancelled', 'Returned')) as ecom_shipping_val
+      `),
+      // 2. COGS for store sales
+      db.query(`
+        SELECT COALESCE(SUM(p.purchase_price * si.quantity), 0) AS store_cogs 
+        FROM sale_items si 
+        JOIN products p ON si.product_id = p.id
+        JOIN sales s ON si.sale_id = s.id
+        WHERE s.order_number IS NULL
+      `),
+      // 3. COGS for e-commerce orders
+      db.query(`
+        SELECT COALESCE(SUM(p.purchase_price * oi.quantity), 0) AS ecom_cogs 
+        FROM order_items oi 
+        JOIN products p ON oi.product_id = p.id
+        JOIN orders o ON oi.order_id = o.id
+        WHERE o.status NOT IN ('Cancelled', 'Returned')
+      `),
+      // 4. Recent purchases
+      db.query(`
+        SELECT p.invoice_number, s.name as supplier, p.total_amount, DATE_FORMAT(p.purchase_date, '%Y-%m-%d') as purchase_date 
+        FROM purchases p 
+        JOIN suppliers s ON p.supplier_id = s.id 
+        ORDER BY p.created_at DESC LIMIT 5
+      `),
+      // 5. Recent store sales
+      db.query(`
+        SELECT s.id, s.invoice_number, c.name as customer, s.grand_total, DATE_FORMAT(s.sale_date, '%Y-%m-%d') as sale_date 
+        FROM sales s 
+        JOIN customers c ON s.customer_id = c.id 
+        WHERE s.order_number IS NULL
+        ORDER BY s.created_at DESC LIMIT 5
+      `),
+      // 6. Recent e-commerce orders
+      db.query(`
+        SELECT o.id, o.order_number, o.customer_name as customer, o.grand_total, o.status, DATE_FORMAT(o.order_date, '%Y-%m-%d') as order_date
+        FROM orders o
+        ORDER BY o.created_at DESC LIMIT 5
+      `),
+      // 7. Top-selling products
+      db.query(`
+        SELECT p.id, p.name, p.code, p.image, SUM(combined.qty) as total_qty, SUM(combined.tot) as total_revenue
+        FROM (
+          SELECT product_id, quantity as qty, total as tot FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.order_number IS NULL
+          UNION ALL
+          SELECT product_id, quantity as qty, total as tot FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.status NOT IN ('Cancelled', 'Returned')
+        ) combined
+        JOIN products p ON combined.product_id = p.id
+        GROUP BY p.id, p.name, p.code, p.image
+        ORDER BY total_qty DESC
+        LIMIT 5
+      `),
+      // 8. 30-day store daily revenue
+      db.query(`
+        SELECT DATE_FORMAT(sale_date, '%Y-%m-%d') as sale_date, SUM(grand_total) AS revenue
+        FROM sales
+        WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND order_number IS NULL
+        GROUP BY sale_date
+      `),
+      // 9. 30-day store daily cogs
+      db.query(`
+        SELECT DATE_FORMAT(s.sale_date, '%Y-%m-%d') as sale_date, SUM(p.purchase_price * si.quantity) AS cogs
+        FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
+        JOIN products p ON si.product_id = p.id
+        WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND s.order_number IS NULL
+        GROUP BY s.sale_date
+      `),
+      // 10. 30-day ecom daily revenue
+      db.query(`
+        SELECT DATE_FORMAT(order_date, '%Y-%m-%d') as order_date, SUM(grand_total) AS revenue
+        FROM orders
+        WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND status NOT IN ('Cancelled', 'Returned')
+        GROUP BY order_date
+      `),
+      // 11. 30-day ecom daily cogs
+      db.query(`
+        SELECT DATE_FORMAT(o.order_date, '%Y-%m-%d') as order_date, SUM(p.purchase_price * oi.quantity) AS cogs
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        JOIN products p ON oi.product_id = p.id
+        WHERE o.order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status NOT IN ('Cancelled', 'Returned')
+        GROUP BY o.order_date
+      `)
+    ]);
 
-    const [[{ store_shipping_val }]] = await db.query('SELECT COALESCE(SUM(shipping_charge), 0) as store_shipping_val FROM sales WHERE order_number IS NULL');
-    const [[{ ecom_shipping_val }]] = await db.query('SELECT COALESCE(SUM(shipping_charge), 0) as ecom_shipping_val FROM orders WHERE status NOT IN ("Cancelled", "Returned")');
+    const {
+      invoices,
+      customers,
+      suppliers,
+      products,
+      purchases,
+      sales,
+      low_stock,
+      total_orders,
+      pending_orders,
+      ecom_sales,
+      store_shipping_val,
+      ecom_shipping_val
+    } = counts;
 
     const store_shipping = parseFloat(store_shipping_val || 0);
     const ecom_shipping = parseFloat(ecom_shipping_val || 0);
@@ -45,105 +147,66 @@ exports.getMetrics = async (req, res) => {
     const totalRevenue = parseFloat(sales) + parseFloat(ecom_sales);
     const totalProfit = parseFloat(sales) - store_shipping + parseFloat(ecom_sales) - ecom_shipping - parseFloat(store_cogs) - parseFloat(ecom_cogs);
 
-
-    // 2. Fetch recent purchases
-    const [recentPurchases] = await db.query(`
-      SELECT p.invoice_number, s.name as supplier, p.total_amount, DATE_FORMAT(p.purchase_date, '%Y-%m-%d') as purchase_date 
-      FROM purchases p 
-      JOIN suppliers s ON p.supplier_id = s.id 
-      ORDER BY p.created_at DESC LIMIT 5
-    `);
-
-    // 3. Fetch recent store sales
-    const [recentSales] = await db.query(`
-      SELECT s.id, s.invoice_number, c.name as customer, s.grand_total, DATE_FORMAT(s.sale_date, '%Y-%m-%d') as sale_date 
-      FROM sales s 
-      JOIN customers c ON s.customer_id = c.id 
-      WHERE s.order_number IS NULL
-      ORDER BY s.created_at DESC LIMIT 5
-    `);
-
-    // Fetch recent e-commerce orders
-    const [recentOrders] = await db.query(`
-      SELECT o.id, o.order_number, o.customer_name as customer, o.grand_total, o.status, DATE_FORMAT(o.order_date, '%Y-%m-%d') as order_date
-      FROM orders o
-      ORDER BY o.created_at DESC LIMIT 5
-    `);
-
-    // 4. Fetch top-selling products
-    const [topSellingProducts] = await db.query(`
-      SELECT p.id, p.name, p.code, p.image, SUM(combined.qty) as total_qty, SUM(combined.tot) as total_revenue
-      FROM (
-        SELECT product_id, quantity as qty, total as tot FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.order_number IS NULL
-        UNION ALL
-        SELECT product_id, quantity as qty, total as tot FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.status NOT IN ('Cancelled', 'Returned')
-      ) combined
-      JOIN products p ON combined.product_id = p.id
-      GROUP BY p.id, p.name, p.code, p.image
-      ORDER BY total_qty DESC
-      LIMIT 5
-    `);
-
-    // 5. Fetch dynamic 30-day sales and gross profit for dashboard chart
-    const [dailyStats] = await db.query(`
-      SELECT 
-        DATE_FORMAT(s.sale_date, '%Y-%m-%d') as sale_date,
-        SUM(s.grand_total) AS revenue,
-        SUM(COALESCE((
-            SELECT SUM(p.purchase_price * si.quantity)
-            FROM sale_items si
-            JOIN products p ON si.product_id = p.id
-            WHERE si.sale_id = s.id
-        ), 0)) AS cogs
-      FROM sales s
-      WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND s.order_number IS NULL
-      GROUP BY s.sale_date
-      ORDER BY s.sale_date ASC
-    `);
-
-    // Fetch dynamic 30-day e-commerce sales and gross profit for dashboard chart
-    const [dailyEcomStats] = await db.query(`
-      SELECT 
-        DATE_FORMAT(o.order_date, '%Y-%m-%d') as order_date,
-        SUM(o.grand_total) AS revenue,
-        SUM(COALESCE((
-            SELECT SUM(p.purchase_price * oi.quantity)
-            FROM order_items oi
-            JOIN products p ON oi.product_id = p.id
-            WHERE oi.order_id = o.id
-        ), 0)) AS cogs
-      FROM orders o
-      WHERE o.order_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND o.status NOT IN ('Cancelled', 'Returned')
-      GROUP BY o.order_date
-      ORDER BY o.order_date ASC
-    `);
-
-    // Organize 30 days of data cleanly combining store & e-commerce
+    // Merge daily stats without correlated subqueries
     const statsMap = {};
-    
-    dailyStats.forEach(row => {
+
+    dailyRevenueStats.forEach(row => {
       statsMap[row.sale_date] = {
         revenue: parseFloat(row.revenue),
-        profit: parseFloat(row.revenue) - parseFloat(row.cogs)
+        cogs: 0.0
       };
     });
 
-    dailyEcomStats.forEach(row => {
-      if (statsMap[row.order_date]) {
-        statsMap[row.order_date].revenue += parseFloat(row.revenue);
-        statsMap[row.order_date].profit += parseFloat(row.revenue) - parseFloat(row.cogs);
+    dailyCogsStats.forEach(row => {
+      if (statsMap[row.sale_date]) {
+        statsMap[row.sale_date].cogs = parseFloat(row.cogs);
       } else {
-        statsMap[row.order_date] = {
-          revenue: parseFloat(row.revenue),
-          profit: parseFloat(row.revenue) - parseFloat(row.cogs)
+        statsMap[row.sale_date] = {
+          revenue: 0.0,
+          cogs: parseFloat(row.cogs)
         };
       }
+    });
+
+    // Merge ecom daily stats
+    const ecomStatsMap = {};
+    dailyEcomRevenueStats.forEach(row => {
+      ecomStatsMap[row.order_date] = {
+        revenue: parseFloat(row.revenue),
+        cogs: 0.0
+      };
+    });
+
+    dailyEcomCogsStats.forEach(row => {
+      if (ecomStatsMap[row.order_date]) {
+        ecomStatsMap[row.order_date].cogs = parseFloat(row.cogs);
+      } else {
+        ecomStatsMap[row.order_date] = {
+          revenue: 0.0,
+          cogs: parseFloat(row.cogs)
+        };
+      }
+    });
+
+    // Combine both store and ecom daily metrics
+    const combinedStatsMap = {};
+    const allDates = new Set([...Object.keys(statsMap), ...Object.keys(ecomStatsMap)]);
+    
+    allDates.forEach(date => {
+      const storeRev = statsMap[date] ? statsMap[date].revenue : 0;
+      const storeCogs = statsMap[date] ? statsMap[date].cogs : 0;
+      const ecomRev = ecomStatsMap[date] ? ecomStatsMap[date].revenue : 0;
+      const ecomCogs = ecomStatsMap[date] ? ecomStatsMap[date].cogs : 0;
+
+      combinedStatsMap[date] = {
+        revenue: storeRev + ecomRev,
+        profit: (storeRev + ecomRev) - (storeCogs + ecomCogs)
+      };
     });
 
     const chartLabels = [];
     const chartRevenue = [];
     const chartProfit = [];
-
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     for (let i = 29; i >= 0; i--) {
@@ -158,16 +221,16 @@ exports.getMetrics = async (req, res) => {
       const labelStr = `${dd} ${monthNames[d.getMonth()]}`;
       chartLabels.push(labelStr);
 
-      if (statsMap[dateStr]) {
-        chartRevenue.push(statsMap[dateStr].revenue);
-        chartProfit.push(statsMap[dateStr].profit);
+      if (combinedStatsMap[dateStr]) {
+        chartRevenue.push(combinedStatsMap[dateStr].revenue);
+        chartProfit.push(combinedStatsMap[dateStr].profit);
       } else {
         chartRevenue.push(0.0);
         chartProfit.push(0.0);
       }
     }
 
-    res.json({
+    const jsonResponse = {
       success: true,
       counts: {
         invoices: parseInt(invoices),
@@ -195,9 +258,15 @@ exports.getMetrics = async (req, res) => {
         revenue: chartRevenue,
         profit: chartProfit
       }
-    });
+    };
 
+    // Store in cache
+    metricsCache = jsonResponse;
+    metricsCacheTime = now;
+
+    res.json(jsonResponse);
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };
+

@@ -1,12 +1,14 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const compression = require('compression');
 require('dotenv').config();
 
 // Initialize express app
 const app = express();
 
 // Middlewares
+app.use(compression());
 app.use(cors()); // Allow all cross origins for development
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

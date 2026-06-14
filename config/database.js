@@ -370,6 +370,32 @@ const pool = mysql.createPool({
       // Column already exists, safe to ignore
     }
 
+    // Add database indexes for performance optimization
+    const indexes = [
+      { table: 'products', name: 'idx_products_name', cols: 'name(191)' },
+      { table: 'products', name: 'idx_products_category', cols: 'category_id' },
+      { table: 'products', name: 'idx_products_supplier', cols: 'supplier_id' },
+      { table: 'sales', name: 'idx_sales_date', cols: 'sale_date' },
+      { table: 'sale_items', name: 'idx_sale_items_product', cols: 'product_id' },
+      { table: 'sale_items', name: 'idx_sale_items_sale', cols: 'sale_id' },
+      { table: 'orders', name: 'idx_orders_date', cols: 'order_date' },
+      { table: 'order_items', name: 'idx_order_items_product', cols: 'product_id' },
+      { table: 'order_items', name: 'idx_order_items_order', cols: 'order_id' },
+      { table: 'purchases', name: 'idx_purchases_date', cols: 'purchase_date' },
+      { table: 'purchase_items', name: 'idx_purchase_items_product', cols: 'product_id' },
+      { table: 'purchase_items', name: 'idx_purchase_items_purchase', cols: 'purchase_id' },
+      { table: 'expenses', name: 'idx_expenses_date', cols: 'expense_date' }
+    ];
+
+    for (const idx of indexes) {
+      try {
+        await connection.query(`CREATE INDEX \`${idx.name}\` ON \`${idx.table}\` (${idx.cols})`);
+        console.log(`Database auto-migration: Created index ${idx.name} on ${idx.table}.`);
+      } catch (err) {
+        // Index likely already exists, ignore error
+      }
+    }
+
     connection.release();
     console.log('Stock Management Database extension auto-migrations completed.');
   } catch (error) {
