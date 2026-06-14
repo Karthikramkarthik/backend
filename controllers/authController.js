@@ -4,7 +4,7 @@ const db = require('../config/database');
 
 exports.register = async (req, res) => {
   try {
-    const { username, password, email } = req.body;
+    const { username, password, email, role_id } = req.body;
 
     if (!username || !password || !email) {
       return res.status(400).json({ error: 'Please enter all required fields' });
@@ -24,10 +24,11 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Insert user
+    // Insert user (defaults to role_id = 7 [Viewer] if not specified)
+    const assignedRoleId = role_id || 7;
     await db.query(
-      'INSERT INTO admins (username, password, email) VALUES (?, ?, ?)',
-      [username, passwordHash, email]
+      'INSERT INTO admins (username, password, email, role_id) VALUES (?, ?, ?, ?)',
+      [username, passwordHash, email, assignedRoleId]
     );
 
     res.status(201).json({ success: true, message: 'User registered successfully!' });
@@ -44,7 +45,10 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Please enter all fields' });
     }
 
-    const [users] = await db.query('SELECT * FROM admins WHERE username = ? LIMIT 1', [username]);
+    const [users] = await db.query(
+      'SELECT a.*, r.name as role_name FROM admins a LEFT JOIN roles r ON a.role_id = r.id WHERE a.username = ? LIMIT 1',
+      [username]
+    );
 
     if (users.length === 0) {
       return res.status(400).json({ error: 'Invalid username or password' });
@@ -58,11 +62,13 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Invalid username or password' });
     }
 
-    // Generate Token
+    // Generate Token with Role Claims
     const payload = {
       id: user.id,
       username: user.username,
-      email: user.email
+      email: user.email,
+      role: user.role_name || null,
+      roleId: user.role_id || null
     };
     
     const token = jwt.sign(
@@ -77,7 +83,9 @@ exports.login = async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        email: user.email
+        email: user.email,
+        role: user.role_name || null,
+        roleId: user.role_id || null
       }
     });
   } catch (error) {
@@ -239,6 +247,41 @@ exports.customerOrders = async (req, res) => {
     }
 
     res.json({ success: true, orders });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+// Get permissions for logged-in user
+exports.getPermissions = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) {
+      return res.status(401).json({ error: 'Unauthorized: Access token is missing or invalid' });
+    }
+
+    if (user.role === 'Owner') {
+      return res.json({ success: true, role: user.role, permissions: ['*'] });
+    }
+
+    const roleId = user.roleId;
+    if (!roleId) {
+      return res.json({ success: true, role: null, permissions: [] });
+    }
+
+    // Query permissions
+    const [perms] = await db.query(
+      'SELECT module_name, action_name FROM role_permissions WHERE role_id = ?',
+      [roleId]
+    );
+
+    const permissions = perms.map(p => `${p.module_name}:${p.action_name}`);
+
+    res.json({
+      success: true,
+      role: user.role,
+      permissions
+    });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }

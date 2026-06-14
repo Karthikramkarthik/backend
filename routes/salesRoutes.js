@@ -2,14 +2,13 @@ const express = require('express');
 const router = express.Router();
 const salesController = require('../controllers/salesController');
 const authMiddleware = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permission');
 
-router.use(authMiddleware);
-
-router.get('/', salesController.list);
-router.get('/price-audits', salesController.priceAudits);
-router.get('/:id', salesController.get);
-router.post('/', salesController.create);
-router.delete('/:id', salesController.delete);
-router.put('/:id/status', salesController.updateStatus);
+router.get('/', authMiddleware, checkPermission('Sales', 'View'), salesController.list);
+router.get('/price-audits', authMiddleware, checkPermission('Sales', 'View'), salesController.priceAudits);
+router.get('/:id', authMiddleware, checkPermission('Sales', 'View'), salesController.get);
+router.post('/', authMiddleware, checkPermission('Sales', 'Create'), salesController.create);
+router.delete('/:id', authMiddleware, checkPermission('Sales', 'Delete'), salesController.delete);
+router.put('/:id/status', authMiddleware, checkPermission('Sales', 'Edit'), salesController.updateStatus);
 
 module.exports = router;

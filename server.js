@@ -29,6 +29,8 @@ const salesRoutes = require('./routes/salesRoutes');
 const fileManagerRoutes = require('./routes/fileManagerRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const searchRoutes = require('./routes/searchRoutes');
+const roleRoutes = require('./routes/roleRoutes');
+const userRoutes = require('./routes/userRoutes');
 
 // Import new e-commerce and admin routes
 const orderRoutes = require('./routes/orderRoutes');
@@ -56,6 +58,8 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/file-manager', fileManagerRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/roles', roleRoutes);
+app.use('/api/users', userRoutes);
 
 // Bind new routes
 app.use('/api/orders', orderRoutes);

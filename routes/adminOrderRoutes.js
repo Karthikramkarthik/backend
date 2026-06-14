@@ -2,15 +2,13 @@ const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
 const authMiddleware = require('../middleware/auth');
+const { checkPermission } = require('../middleware/permission');
 
-// Guard all administrative order endpoints with JWT
-router.use(authMiddleware);
-
-router.get('/', orderController.list);
-router.get('/summary', orderController.summary);
-router.get('/:id', orderController.get);
-router.put('/:id/status', orderController.updateStatus);
-router.delete('/:id', orderController.delete);
-router.post('/:id/invoice', orderController.getInvoice);
+router.get('/', authMiddleware, checkPermission('Orders', 'View'), orderController.list);
+router.get('/summary', authMiddleware, checkPermission('Orders', 'View'), orderController.summary);
+router.get('/:id', authMiddleware, checkPermission('Orders', 'View'), orderController.get);
+router.put('/:id/status', authMiddleware, checkPermission('Orders', 'Edit'), orderController.updateStatus);
+router.delete('/:id', authMiddleware, checkPermission('Orders', 'Delete'), orderController.delete);
+router.post('/:id/invoice', authMiddleware, checkPermission('Orders', 'View'), orderController.getInvoice);
 
 module.exports = router;

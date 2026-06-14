@@ -8,6 +8,7 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/change-password', authMiddleware, authController.changePassword);
 router.get('/profile', authMiddleware, authController.getProfile);
+router.get('/permissions', authMiddleware, authController.getPermissions);
 
 // Customer E-Commerce Auth Routes
 router.post('/customer/register', authController.customerRegister);

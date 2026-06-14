@@ -396,6 +396,181 @@ const pool = mysql.createPool({
       }
     }
 
+    // Role Management Tables
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`roles\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`name\` varchar(50) NOT NULL,
+        \`description\` varchar(255) DEFAULT NULL,
+        \`status\` enum('active','inactive') DEFAULT 'active',
+        \`is_system\` tinyint(1) DEFAULT 0,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`name\` (\`name\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`role_permissions\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`role_id\` int(11) NOT NULL,
+        \`module_name\` varchar(50) NOT NULL,
+        \`action_name\` varchar(50) NOT NULL,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`role_module_action\` (\`role_id\`, \`module_name\`, \`action_name\`),
+        FOREIGN KEY (\`role_id\`) REFERENCES \`roles\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`role_audit_logs\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`user_id\` int(11) DEFAULT NULL,
+        \`action\` varchar(50) NOT NULL,
+        \`role_id\` int(11) DEFAULT NULL,
+        \`details\` text NOT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Seed Roles if empty
+    const [rolesCount] = await connection.query('SELECT COUNT(*) as count FROM roles');
+    if (rolesCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO \`roles\` (\`id\`, \`name\`, \`description\`, \`status\`, \`is_system\`) VALUES
+        (1, 'Owner', 'Full access to all system modules and settings', 'active', 1),
+        (2, 'Admin', 'Full administrative capabilities', 'active', 1),
+        (3, 'Manager', 'Manage inventory, sales, purchases, reports, and standard modules', 'active', 1),
+        (4, 'Staff', 'Standard operations access, limited modules', 'active', 1),
+        (5, 'Sales', 'Access to POS terminal, invoices, e-com orders, and customers', 'active', 1),
+        (6, 'Inventory Manager', 'Manage products, categories, suppliers, and purchases', 'active', 1),
+        (7, 'Viewer', 'Read-only access across modules', 'active', 1)
+      `);
+      console.log('Database auto-migration: Seeded default roles.');
+    }
+
+    // Seed Permissions if empty
+    const [permissionsCount] = await connection.query('SELECT COUNT(*) as count FROM role_permissions');
+    if (permissionsCount[0].count === 0) {
+      const modules = [
+        'Dashboard', 'POS', 'Categories', 'Products', 'Suppliers', 'Purchases', 
+        'Customers', 'Sales', 'Orders', 'Invoices', 'Reports', 'Expenses', 
+        'Assets', 'Coupons', 'File Manager', 'Users', 'Settings'
+      ];
+      const actions = ['View', 'Create', 'Edit', 'Delete', 'Export', 'Approve', 'Restore', 'Manage Settings'];
+
+      let insertValues = [];
+
+      // Owner (1) & Admin (2) get full permissions
+      for (const roleId of [1, 2]) {
+        for (const module of modules) {
+          for (const action of actions) {
+            insertValues.push([roleId, module, action]);
+          }
+        }
+      }
+
+      // Manager (3)
+      for (const module of modules) {
+        if (module === 'Users' || module === 'Settings') {
+          insertValues.push([3, module, 'View']);
+        } else {
+          for (const action of ['View', 'Create', 'Edit', 'Export', 'Approve', 'Restore']) {
+            insertValues.push([3, module, action]);
+          }
+        }
+      }
+
+      // Staff (4)
+      const staffPerms = {
+        'Dashboard': ['View'],
+        'POS': ['View', 'Create'],
+        'Categories': ['View'],
+        'Products': ['View'],
+        'Suppliers': ['View'],
+        'Purchases': ['View'],
+        'Customers': ['View', 'Create'],
+        'Sales': ['View', 'Create'],
+        'Orders': ['View'],
+        'Invoices': ['View'],
+        'Expenses': ['View', 'Create'],
+        'Assets': ['View'],
+        'Coupons': ['View'],
+        'File Manager': ['View']
+      };
+      for (const [module, acts] of Object.entries(staffPerms)) {
+        for (const action of acts) {
+          insertValues.push([4, module, action]);
+        }
+      }
+
+      // Sales (5)
+      const salesPerms = {
+        'Dashboard': ['View'],
+        'POS': ['View', 'Create', 'Edit'],
+        'Customers': ['View', 'Create', 'Edit', 'Export'],
+        'Sales': ['View', 'Create', 'Edit', 'Export'],
+        'Orders': ['View', 'Create', 'Edit'],
+        'Invoices': ['View', 'Create', 'Export'],
+        'Coupons': ['View'],
+        'Categories': ['View'],
+        'Products': ['View']
+      };
+      for (const [module, acts] of Object.entries(salesPerms)) {
+        for (const action of acts) {
+          insertValues.push([5, module, action]);
+        }
+      }
+
+      // Inventory Manager (6)
+      const invPerms = {
+        'Dashboard': ['View'],
+        'Categories': ['View', 'Create', 'Edit', 'Delete'],
+        'Products': ['View', 'Create', 'Edit', 'Delete', 'Export'],
+        'Suppliers': ['View', 'Create', 'Edit', 'Delete', 'Export'],
+        'Purchases': ['View', 'Create', 'Edit', 'Delete', 'Export', 'Approve'],
+        'Customers': ['View'],
+        'File Manager': ['View', 'Create', 'Edit', 'Delete']
+      };
+      for (const [module, acts] of Object.entries(invPerms)) {
+        for (const action of acts) {
+          insertValues.push([6, module, action]);
+        }
+      }
+
+      // Viewer (7)
+      for (const module of modules) {
+        insertValues.push([7, module, 'View']);
+      }
+
+      // Bulk insert permissions
+      await connection.query(
+        'INSERT INTO role_permissions (role_id, module_name, action_name) VALUES ?',
+        [insertValues]
+      );
+      console.log('Database auto-migration: Seeded default role permissions.');
+    }
+
+    // Ensure role_id column exists in admins table
+    try {
+      await connection.query('ALTER TABLE `admins` ADD COLUMN `role_id` int(11) DEFAULT NULL AFTER `email`');
+      console.log('Database auto-migration: Added role_id column to admins table.');
+    } catch (err) {
+      // Column already exists, safe to ignore
+    }
+
+    try {
+      await connection.query('ALTER TABLE `admins` ADD CONSTRAINT `fk_admins_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE SET NULL');
+      console.log('Database auto-migration: Added foreign key constraint fk_admins_role to admins table.');
+    } catch (err) {
+      // Constraint already exists, safe to ignore
+    }
+
+    // Assign existing admins with null role_id to Owner role (role_id = 1)
+    await connection.query('UPDATE `admins` SET `role_id` = 1 WHERE `role_id` IS NULL');
+    console.log('Database auto-migration: Associated existing admin users with Owner role.');
+
     connection.release();
     console.log('Stock Management Database extension auto-migrations completed.');
   } catch (error) {
