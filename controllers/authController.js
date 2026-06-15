@@ -1,6 +1,15 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
+const fs = require('fs');
+const path = require('path');
+
+const logFile = path.join(__dirname, '../debug.log');
+function logDebug(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  fs.appendFileSync(logFile, line);
+  console.log(msg);
+}
 
 exports.register = async (req, res) => {
   try {
@@ -254,35 +263,44 @@ exports.customerOrders = async (req, res) => {
 
 // Get permissions for logged-in user
 exports.getPermissions = async (req, res) => {
+  logDebug('[getPermissions] Hit endpoint. User: ' + JSON.stringify(req.user));
   try {
     const user = req.user;
     if (!user) {
+      logDebug('[getPermissions] No user attached.');
       return res.status(401).json({ error: 'Unauthorized: Access token is missing or invalid' });
     }
 
     if (user.role === 'Owner') {
+      logDebug('[getPermissions] User is Owner. Returning *');
       return res.json({ success: true, role: user.role, permissions: ['*'] });
     }
 
     const roleId = user.roleId;
+    logDebug('[getPermissions] User roleId: ' + roleId);
     if (!roleId) {
+      logDebug('[getPermissions] No roleId found for user.');
       return res.json({ success: true, role: null, permissions: [] });
     }
 
+    logDebug('[getPermissions] Querying role_permissions table...');
     // Query permissions
     const [perms] = await db.query(
       'SELECT module_name, action_name FROM role_permissions WHERE role_id = ?',
       [roleId]
     );
+    logDebug('[getPermissions] Query completed. Number of permissions: ' + perms.length);
 
     const permissions = perms.map(p => `${p.module_name}:${p.action_name}`);
 
+    logDebug('[getPermissions] Returning permissions to client.');
     res.json({
       success: true,
       role: user.role,
       permissions
     });
   } catch (error) {
+    logDebug('[getPermissions] Error occurred: ' + error.stack);
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };

@@ -132,7 +132,8 @@ exports.getReports = async (req, res) => {
       [allProductSales],
       [[{ totalSales }]],
       [[{ totalPurchases }]],
-      [[{ totalExpenses }]]
+      [[{ totalExpenses }]],
+      [personalUsage]
     ] = await Promise.all([
       // A. Period stats
       Promise.all([
@@ -259,7 +260,25 @@ exports.getReports = async (req, res) => {
       // J. Aggregated totals
       db.query('SELECT COALESCE(SUM(grand_total), 0) as totalSales FROM sales'),
       db.query('SELECT COALESCE(SUM(total_amount), 0) as totalPurchases FROM purchases'),
-      db.query('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses')
+      db.query('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses'),
+      // K. Personal Usage Report
+      db.query(`
+        SELECT 
+          ic.id,
+          p.name AS product_name,
+          p.code AS product_code,
+          ic.size,
+          ic.quantity,
+          ic.purchase_price,
+          (ic.purchase_price * ic.quantity) AS usage_cost,
+          DATE_FORMAT(ic.usage_date, '%Y-%m-%d') AS usage_date,
+          ic.used_by,
+          ic.reason,
+          ic.notes
+        FROM internal_consumptions ic
+        JOIN products p ON ic.product_id = p.id
+        ORDER BY ic.usage_date DESC, ic.created_at DESC
+      `)
     ]);
 
     // Map the timeline datasets
@@ -349,7 +368,8 @@ exports.getReports = async (req, res) => {
       expenseCategories,
       stockReport,
       priceAudits,
-      allProductSales
+      allProductSales,
+      personalUsage
     };
 
     // Store in cache
@@ -562,13 +582,30 @@ exports.customerPurchaseHistory = async (req, res) => {
       ORDER BY s.sale_date DESC
     `, [mobile]);
 
+    const isAdminOrOwner = req.user && (req.user.role === 'Owner' || req.user.role === 'Admin');
+
     for (let sale of posSales) {
       const [items] = await db.query(`
-        SELECT si.id, si.quantity, si.rate as price, si.total, si.size, p.name as product_name, p.code as product_code
+        SELECT si.id, si.quantity, si.rate as price, si.total, si.size, p.name as product_name, p.code as product_code${isAdminOrOwner ? ', p.purchase_price as cost_price' : ''}
         FROM sale_items si
         JOIN products p ON si.product_id = p.id
         WHERE si.sale_id = ?
       `, [sale.id]);
+
+      if (isAdminOrOwner) {
+        let totalProfit = 0;
+        for (let item of items) {
+          const costPrice = parseFloat(item.cost_price) || 0;
+          const sellingPrice = parseFloat(item.price) || 0;
+          const quantity = parseFloat(item.quantity) || 0;
+
+          item.profit = (sellingPrice - costPrice) * quantity;
+          item.profit_percent = (costPrice > 0 && quantity > 0) ? (item.profit / (costPrice * quantity)) * 100 : 0;
+          totalProfit += item.profit;
+        }
+        sale.total_profit = totalProfit;
+      }
+
       sale.items = items;
     }
 
@@ -584,11 +621,26 @@ exports.customerPurchaseHistory = async (req, res) => {
 
     for (let order of ecomOrders) {
       const [items] = await db.query(`
-        SELECT oi.id, oi.quantity, oi.price, oi.total, oi.size, oi.color, p.name as product_name, p.code as product_code
+        SELECT oi.id, oi.quantity, oi.price, oi.total, oi.size, oi.color, p.name as product_name, p.code as product_code${isAdminOrOwner ? ', p.purchase_price as cost_price' : ''}
         FROM order_items oi
         JOIN products p ON oi.product_id = p.id
         WHERE oi.order_id = ?
       `, [order.id]);
+
+      if (isAdminOrOwner) {
+        let totalProfit = 0;
+        for (let item of items) {
+          const costPrice = parseFloat(item.cost_price) || 0;
+          const sellingPrice = parseFloat(item.price) || 0;
+          const quantity = parseFloat(item.quantity) || 0;
+
+          item.profit = (sellingPrice - costPrice) * quantity;
+          item.profit_percent = (costPrice > 0 && quantity > 0) ? (item.profit / (costPrice * quantity)) * 100 : 0;
+          totalProfit += item.profit;
+        }
+        order.total_profit = totalProfit;
+      }
+
       order.items = items;
       if (!customerName && order.customer_name) {
         customerName = order.customer_name;

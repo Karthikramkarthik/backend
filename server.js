@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const compression = require('compression');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // Initialize express app
 const app = express();
@@ -44,8 +44,27 @@ const adminReviewRoutes = require('./routes/adminReviewRoutes');
 const adminNotificationRoutes = require('./routes/adminNotificationRoutes');
 const instagramRoutes = require('./routes/instagramRoutes');
 const systemSettingsRoutes = require('./routes/systemSettingsRoutes');
+const internalConsumptionRoutes = require('./routes/internalConsumptionRoutes');
 
 // Bind Routes
+app.get('/api/pool-status', (req, res) => {
+  const pool = require('./config/database');
+  const underlyingPool = pool.pool;
+  res.json({
+    totalConnections: underlyingPool && underlyingPool._allConnections ? underlyingPool._allConnections.length : (pool._allConnections ? pool._allConnections.length : null),
+    freeConnections: underlyingPool && underlyingPool._freeConnections ? underlyingPool._freeConnections.length : (pool._freeConnections ? pool._freeConnections.length : null),
+    queuedRequests: underlyingPool && underlyingPool._connectionQueue ? underlyingPool._connectionQueue.length : (pool._connectionQueue ? pool._connectionQueue.length : null)
+  });
+});
+app.get('/api/test-db-query', async (req, res) => {
+  try {
+    const db = require('./config/database');
+    const [result] = await db.query("SELECT module_name, action_name FROM role_permissions WHERE role_id = 6");
+    res.json({ success: true, result });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -73,6 +92,7 @@ app.use('/api/admin/reviews', adminReviewRoutes);
 app.use('/api/admin/notifications', adminNotificationRoutes);
 app.use('/api/instagram', instagramRoutes);
 app.use('/api/settings', systemSettingsRoutes);
+app.use('/api/internal-consumption', internalConsumptionRoutes);
 
 // Base route
 app.get('/', (req, res) => {

@@ -1,5 +1,5 @@
 const mysql = require('mysql2/promise');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
@@ -14,8 +14,9 @@ const pool = mysql.createPool({
 
 // Test database connection and auto-migrate tables on load
 (async () => {
+  let connection;
   try {
-    const connection = await pool.getConnection();
+    connection = await pool.getConnection();
     console.log('Connected to MySQL Database successfully via connection pool.');
 
     const fs = require('fs');
@@ -396,6 +397,25 @@ const pool = mysql.createPool({
       }
     }
 
+    // 13. Migrate internal_consumptions table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`internal_consumptions\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`product_id\` int(11) NOT NULL,
+        \`size\` varchar(50) DEFAULT NULL,
+        \`quantity\` int(11) NOT NULL,
+        \`purchase_price\` decimal(10,2) NOT NULL,
+        \`sales_price\` decimal(10,2) NOT NULL,
+        \`usage_date\` date NOT NULL,
+        \`used_by\` varchar(100) NOT NULL,
+        \`reason\` varchar(100) NOT NULL,
+        \`notes\` text DEFAULT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        FOREIGN KEY (\`product_id\`) REFERENCES \`products\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // Role Management Tables
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`roles\` (
@@ -571,10 +591,14 @@ const pool = mysql.createPool({
     await connection.query('UPDATE `admins` SET `role_id` = 1 WHERE `role_id` IS NULL');
     console.log('Database auto-migration: Associated existing admin users with Owner role.');
 
-    connection.release();
     console.log('Stock Management Database extension auto-migrations completed.');
   } catch (error) {
     console.error('Database extension migration failed:', error.message);
+  } finally {
+    if (connection) {
+      connection.release();
+      console.log('Database connection released back to pool.');
+    }
   }
 })();
 

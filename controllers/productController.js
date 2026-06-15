@@ -51,6 +51,7 @@ exports.list = async (req, res) => {
   try {
     const query = req.query.q || '';
     const categoryId = parseInt(req.query.category) || 0;
+    const supplierId = parseInt(req.query.supplier) || 0;
     const page = parseInt(req.query.page) || 0;
     const limit = parseInt(req.query.limit) || 0;
 
@@ -85,6 +86,14 @@ exports.list = async (req, res) => {
       countSql += categoryFilter;
       params.push(categoryId);
       countParams.push(categoryId);
+    }
+
+    if (supplierId > 0) {
+      const supplierFilter = ' AND p.supplier_id = ?';
+      sql += supplierFilter;
+      countSql += supplierFilter;
+      params.push(supplierId);
+      countParams.push(supplierId);
     }
 
     sql += ' ORDER BY p.name ASC';
