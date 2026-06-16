@@ -189,6 +189,18 @@ exports.create = async (req, res) => {
     }
 
     await connection.commit();
+
+    // Broadcast WebSocket notification to all active admin/mobile sessions
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('admin_notification', {
+        type: 'new_order',
+        message: `New e-commerce order ${orderNumber} placed by ${customer_name} for ₹${grandTotal.toFixed(2)}.`,
+        reference_id: orderId,
+        created_at: new Date()
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: 'Order placed successfully!',

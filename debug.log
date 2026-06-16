@@ -32,3 +32,18 @@
 [2026-06-15T11:12:14.277Z] [getPermissions] Querying role_permissions table...
 [2026-06-15T11:12:14.280Z] [getPermissions] Query completed. Number of permissions: 17
 [2026-06-15T11:12:14.280Z] [getPermissions] Returning permissions to client.
+[2026-06-15T11:14:28.505Z] [getPermissions] Hit endpoint. User: {"id":9,"username":"dheeran","email":"dheeran@gmail.com","role":"Viewer","roleId":7,"iat":1781514142,"exp":1781542942}
+[2026-06-15T11:14:28.521Z] [getPermissions] User roleId: 7
+[2026-06-15T11:14:28.522Z] [getPermissions] Querying role_permissions table...
+[2026-06-15T11:14:28.652Z] [getPermissions] Query completed. Number of permissions: 17
+[2026-06-15T11:14:28.652Z] [getPermissions] Returning permissions to client.
+[2026-06-15T11:45:21.991Z] [getPermissions] Hit endpoint. User: {"id":9,"username":"dheeran","email":"dheeran@gmail.com","role":"Viewer","roleId":7,"iat":1781514142,"exp":1781542942}
+[2026-06-15T11:45:21.999Z] [getPermissions] User roleId: 7
+[2026-06-15T11:45:21.999Z] [getPermissions] Querying role_permissions table...
+[2026-06-15T11:45:22.035Z] [getPermissions] Query completed. Number of permissions: 17
+[2026-06-15T11:45:22.036Z] [getPermissions] Returning permissions to client.
+[2026-06-15T11:45:39.217Z] [getPermissions] Hit endpoint. User: {"id":9,"username":"dheeran","email":"dheeran@gmail.com","role":"Viewer","roleId":7,"iat":1781514142,"exp":1781542942}
+[2026-06-15T11:45:39.217Z] [getPermissions] User roleId: 7
+[2026-06-15T11:45:39.217Z] [getPermissions] Querying role_permissions table...
+[2026-06-15T11:45:39.246Z] [getPermissions] Query completed. Number of permissions: 17
+[2026-06-15T11:45:39.247Z] [getPermissions] Returning permissions to client.
