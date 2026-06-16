@@ -47,3 +47,5 @@
 [2026-06-15T11:45:39.217Z] [getPermissions] Querying role_permissions table...
 [2026-06-15T11:45:39.246Z] [getPermissions] Query completed. Number of permissions: 17
 [2026-06-15T11:45:39.247Z] [getPermissions] Returning permissions to client.
+[2026-06-16T06:48:16.267Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781591870,"exp":1781620670}
+[2026-06-16T06:48:16.270Z] [getPermissions] User is Owner. Returning *
