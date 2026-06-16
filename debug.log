@@ -49,3 +49,208 @@
 [2026-06-15T11:45:39.247Z] [getPermissions] Returning permissions to client.
 [2026-06-16T06:48:16.267Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781591870,"exp":1781620670}
 [2026-06-16T06:48:16.270Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:02:59.758Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781621717,"exp":1781650517}
+[2026-06-16T15:02:59.766Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:07:44.819Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781622464,"exp":1781651264}
+[2026-06-16T15:07:44.822Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:07:48.912Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781622464,"exp":1781651264}
+[2026-06-16T15:07:48.913Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:07:51.364Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781622464,"exp":1781651264}
+[2026-06-16T15:07:51.365Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:08:35.814Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781622515,"exp":1781651315}
+[2026-06-16T15:08:35.816Z] [getPermissions] User roleId: 6
+[2026-06-16T15:08:35.816Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:08:35.820Z] [getPermissions] Query completed. Number of permissions: 1
+[2026-06-16T15:08:35.820Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:15:48.228Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781622515,"exp":1781651315}
+[2026-06-16T15:15:48.235Z] [getPermissions] User roleId: 6
+[2026-06-16T15:15:48.236Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:15:48.241Z] [getPermissions] Query completed. Number of permissions: 0
+[2026-06-16T15:15:48.242Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:17:04.484Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623024,"exp":1781651824}
+[2026-06-16T15:17:04.485Z] [getPermissions] User roleId: 6
+[2026-06-16T15:17:04.485Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:17:04.487Z] [getPermissions] Query completed. Number of permissions: 0
+[2026-06-16T15:17:04.488Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:17:27.410Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623047,"exp":1781651847}
+[2026-06-16T15:17:27.411Z] [getPermissions] User roleId: 6
+[2026-06-16T15:17:27.411Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:17:27.412Z] [getPermissions] Query completed. Number of permissions: 0
+[2026-06-16T15:17:27.412Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:18:10.150Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623090,"exp":1781651890}
+[2026-06-16T15:18:10.151Z] [getPermissions] User roleId: 6
+[2026-06-16T15:18:10.152Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:18:10.153Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:18:10.153Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:18:19.415Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623090,"exp":1781651890}
+[2026-06-16T15:18:19.420Z] [getPermissions] User roleId: 6
+[2026-06-16T15:18:19.420Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:18:19.439Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:18:19.440Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:18:26.552Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623090,"exp":1781651890}
+[2026-06-16T15:18:26.558Z] [getPermissions] User roleId: 6
+[2026-06-16T15:18:26.559Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:18:26.561Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:18:26.562Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:21:57.234Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623090,"exp":1781651890}
+[2026-06-16T15:21:57.238Z] [getPermissions] User roleId: 6
+[2026-06-16T15:21:57.239Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:21:57.283Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:21:57.284Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:24:29.115Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623090,"exp":1781651890}
+[2026-06-16T15:24:29.117Z] [getPermissions] User roleId: 6
+[2026-06-16T15:24:29.117Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:24:29.154Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T15:24:29.154Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:26:34.797Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623090,"exp":1781651890}
+[2026-06-16T15:26:34.799Z] [getPermissions] User roleId: 6
+[2026-06-16T15:26:34.799Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:26:34.821Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T15:26:34.821Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:26:44.251Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623601,"exp":1781652401}
+[2026-06-16T15:26:44.252Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:26:45.562Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623601,"exp":1781652401}
+[2026-06-16T15:26:45.563Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:27:17.708Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623628,"exp":1781652428}
+[2026-06-16T15:27:17.716Z] [getPermissions] User roleId: 6
+[2026-06-16T15:27:17.717Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:27:17.725Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:27:17.726Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:27:22.946Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623628,"exp":1781652428}
+[2026-06-16T15:27:22.947Z] [getPermissions] User roleId: 6
+[2026-06-16T15:27:22.947Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:27:22.951Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:27:22.951Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:27:43.861Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623628,"exp":1781652428}
+[2026-06-16T15:27:43.862Z] [getPermissions] User roleId: 6
+[2026-06-16T15:27:43.862Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:27:43.897Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:27:43.897Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:28:15.760Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623695,"exp":1781652495}
+[2026-06-16T15:28:15.765Z] [getPermissions] User roleId: 6
+[2026-06-16T15:28:15.765Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:28:15.771Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:28:15.771Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:29:14.202Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623695,"exp":1781652495}
+[2026-06-16T15:29:14.213Z] [getPermissions] User roleId: 6
+[2026-06-16T15:29:14.216Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:29:14.228Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:29:14.229Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:29:39.672Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:29:39.678Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:29:44.582Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:29:44.583Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:29:48.106Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:29:48.107Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:34.711Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:34.726Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:39.643Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:39.648Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:48.462Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:48.468Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:50.432Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:50.436Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:51.215Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:51.216Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:51.467Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:51.468Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:51.628Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:51.629Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:51.913Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:51.915Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:52.273Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:52.274Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:52.462Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:52.463Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:52.603Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:52.603Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:52.939Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:52.943Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:30:53.095Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:30:53.096Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:31:06.559Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781623775,"exp":1781652575}
+[2026-06-16T15:31:06.560Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:31:30.553Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623878,"exp":1781652678}
+[2026-06-16T15:31:30.555Z] [getPermissions] User roleId: 6
+[2026-06-16T15:31:30.556Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:31:30.565Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:31:30.567Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:31:34.235Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623878,"exp":1781652678}
+[2026-06-16T15:31:34.244Z] [getPermissions] User roleId: 6
+[2026-06-16T15:31:34.244Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:31:34.277Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:31:34.277Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:39:10.780Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623878,"exp":1781652678}
+[2026-06-16T15:39:10.783Z] [getPermissions] User roleId: 6
+[2026-06-16T15:39:10.783Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:39:10.826Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:39:10.826Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:39:14.367Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781623878,"exp":1781652678}
+[2026-06-16T15:39:14.369Z] [getPermissions] User roleId: 6
+[2026-06-16T15:39:14.370Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:39:14.373Z] [getPermissions] Query completed. Number of permissions: 8
+[2026-06-16T15:39:14.373Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:39:26.735Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781624366,"exp":1781653166}
+[2026-06-16T15:39:26.735Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:39:32.864Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781624366,"exp":1781653166}
+[2026-06-16T15:39:32.865Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:39:36.547Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781624366,"exp":1781653166}
+[2026-06-16T15:39:36.548Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:39:39.209Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781624366,"exp":1781653166}
+[2026-06-16T15:39:39.211Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T15:40:14.926Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781624406,"exp":1781653206}
+[2026-06-16T15:40:14.927Z] [getPermissions] User roleId: 6
+[2026-06-16T15:40:14.927Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:40:14.938Z] [getPermissions] Query completed. Number of permissions: 16
+[2026-06-16T15:40:14.939Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:44:09.517Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781624406,"exp":1781653206}
+[2026-06-16T15:44:09.521Z] [getPermissions] User roleId: 6
+[2026-06-16T15:44:09.522Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:44:09.537Z] [getPermissions] Query completed. Number of permissions: 16
+[2026-06-16T15:44:09.538Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:44:29.317Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781624669,"exp":1781653469}
+[2026-06-16T15:44:29.318Z] [getPermissions] User roleId: 6
+[2026-06-16T15:44:29.318Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:44:29.329Z] [getPermissions] Query completed. Number of permissions: 16
+[2026-06-16T15:44:29.329Z] [getPermissions] Returning permissions to client.
+[2026-06-16T15:44:40.135Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781624669,"exp":1781653469}
+[2026-06-16T15:44:40.139Z] [getPermissions] User roleId: 6
+[2026-06-16T15:44:40.140Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T15:44:40.143Z] [getPermissions] Query completed. Number of permissions: 16
+[2026-06-16T15:44:40.144Z] [getPermissions] Returning permissions to client.
+[2026-06-16T16:01:24.305Z] [getPermissions] Hit endpoint. User: {"id":11,"username":"testmanager","email":"testmanager@example.com","role":"Inventory Manager","roleId":6,"iat":1781625684,"exp":1781654484}
+[2026-06-16T16:01:24.312Z] [getPermissions] User roleId: 6
+[2026-06-16T16:01:24.312Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T16:01:24.323Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T16:01:24.323Z] [getPermissions] Returning permissions to client.
+[2026-06-16T16:02:03.428Z] [getPermissions] Hit endpoint. User: {"id":11,"username":"testmanager","email":"testmanager@example.com","role":"Inventory Manager","roleId":6,"iat":1781625684,"exp":1781654484}
+[2026-06-16T16:02:03.468Z] [getPermissions] User roleId: 6
+[2026-06-16T16:02:03.468Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T16:02:03.471Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T16:02:03.471Z] [getPermissions] Returning permissions to client.
+[2026-06-16T16:03:13.793Z] [getPermissions] Hit endpoint. User: {"id":11,"username":"testmanager","email":"testmanager@example.com","role":"Inventory Manager","roleId":6,"iat":1781625684,"exp":1781654484}
+[2026-06-16T16:03:13.817Z] [getPermissions] User roleId: 6
+[2026-06-16T16:03:13.817Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T16:03:13.820Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T16:03:13.821Z] [getPermissions] Returning permissions to client.
+[2026-06-16T16:03:44.816Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781624406,"exp":1781653206}
+[2026-06-16T16:03:44.848Z] [getPermissions] User roleId: 6
+[2026-06-16T16:03:44.848Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T16:03:44.850Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T16:03:44.851Z] [getPermissions] Returning permissions to client.
+[2026-06-16T16:03:51.584Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781624406,"exp":1781653206}
+[2026-06-16T16:03:51.621Z] [getPermissions] User roleId: 6
+[2026-06-16T16:03:51.621Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T16:03:51.625Z] [getPermissions] Query completed. Number of permissions: 26
+[2026-06-16T16:03:51.626Z] [getPermissions] Returning permissions to client.
+[2026-06-16T16:04:08.796Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781625848,"exp":1781654648}
+[2026-06-16T16:04:08.797Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T16:04:25.041Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781625848,"exp":1781654648}
+[2026-06-16T16:04:25.064Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T16:04:33.207Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781625873,"exp":1781654673}
+[2026-06-16T16:04:33.208Z] [getPermissions] User is Owner. Returning *
+[2026-06-16T16:05:21.006Z] [getPermissions] Hit endpoint. User: {"id":10,"username":"ishu","email":"ishu@gmail.com","role":"Inventory Manager","roleId":6,"iat":1781625921,"exp":1781654721}
+[2026-06-16T16:05:21.008Z] [getPermissions] User roleId: 6
+[2026-06-16T16:05:21.008Z] [getPermissions] Querying role_permissions table...
+[2026-06-16T16:05:21.009Z] [getPermissions] Query completed. Number of permissions: 27
+[2026-06-16T16:05:21.009Z] [getPermissions] Returning permissions to client.

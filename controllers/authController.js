@@ -136,7 +136,28 @@ exports.changePassword = async (req, res) => {
 };
 
 exports.getProfile = async (req, res) => {
-  res.json({ success: true, user: req.user });
+  try {
+    const [users] = await db.query(
+      'SELECT a.id, a.username, a.email, a.role_id, r.name as role_name FROM admins a LEFT JOIN roles r ON a.role_id = r.id WHERE a.id = ? LIMIT 1',
+      [req.user.id]
+    );
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const dbUser = users[0];
+    res.json({
+      success: true,
+      user: {
+        id: dbUser.id,
+        username: dbUser.username,
+        email: dbUser.email,
+        role: dbUser.role_name || null,
+        roleId: dbUser.role_id || null
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
 };
 
 // Customer Register
@@ -271,12 +292,24 @@ exports.getPermissions = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Access token is missing or invalid' });
     }
 
-    if (user.role === 'Owner') {
+    // Query database for fresh user role
+    const [dbUsers] = await db.query(
+      'SELECT a.role_id, r.name as role_name FROM admins a LEFT JOIN roles r ON a.role_id = r.id WHERE a.id = ? LIMIT 1',
+      [user.id]
+    );
+    if (dbUsers.length === 0) {
+      logDebug('[getPermissions] User account not found in DB.');
+      return res.status(403).json({ error: 'Forbidden: User account not found' });
+    }
+    const dbUser = dbUsers[0];
+    const roleName = dbUser.role_name;
+    const roleId = dbUser.role_id;
+
+    if (roleName === 'Owner') {
       logDebug('[getPermissions] User is Owner. Returning *');
-      return res.json({ success: true, role: user.role, permissions: ['*'] });
+      return res.json({ success: true, role: roleName, permissions: ['*'] });
     }
 
-    const roleId = user.roleId;
     logDebug('[getPermissions] User roleId: ' + roleId);
     if (!roleId) {
       logDebug('[getPermissions] No roleId found for user.');
@@ -296,7 +329,8 @@ exports.getPermissions = async (req, res) => {
     logDebug('[getPermissions] Returning permissions to client.');
     res.json({
       success: true,
-      role: user.role,
+      role: roleName,
+      roleId: roleId,
       permissions
     });
   } catch (error) {
