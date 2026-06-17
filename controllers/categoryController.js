@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { cleanAuditInfo } = require('../middleware/audit');
 
 const slugify = (text) => {
   return text
@@ -14,7 +15,7 @@ const slugify = (text) => {
 exports.list = async (req, res) => {
   try {
     const [categories] = await db.query('SELECT * FROM categories ORDER BY name ASC');
-    res.json({ success: true, categories });
+    res.json({ success: true, categories: cleanAuditInfo(req, categories) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -27,7 +28,7 @@ exports.get = async (req, res) => {
     if (categories.length === 0) {
       return res.status(404).json({ error: 'Category not found' });
     }
-    res.json({ success: true, category: categories[0] });
+    res.json({ success: true, category: cleanAuditInfo(req, categories[0]) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -49,8 +50,16 @@ exports.create = async (req, res) => {
     }
 
     const [result] = await db.query(
-      'INSERT INTO categories (name, slug, details, status) VALUES (?, ?, ?, ?)',
-      [name, slug, details || null, status || 'active']
+      'INSERT INTO categories (name, slug, details, status, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        name,
+        slug,
+        details || null,
+        status || 'active',
+        req.user ? req.user.id : null,
+        req.user ? req.user.username : null,
+        req.user ? req.user.role : null
+      ]
     );
 
     res.status(201).json({

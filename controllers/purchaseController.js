@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const db = require('../config/database');
+const { cleanAuditInfo } = require('../middleware/audit');
 
 exports.list = async (req, res) => {
   try {
@@ -10,7 +11,7 @@ exports.list = async (req, res) => {
       JOIN suppliers s ON p.supplier_id = s.id 
       ORDER BY p.purchase_date DESC
     `);
-    res.json({ success: true, purchases });
+    res.json({ success: true, purchases: cleanAuditInfo(req, purchases) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -42,7 +43,7 @@ exports.get = async (req, res) => {
 
     purchase.items = items;
 
-    res.json({ success: true, purchase });
+    res.json({ success: true, purchase: cleanAuditInfo(req, purchase) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -77,9 +78,19 @@ exports.create = async (req, res) => {
 
     // Insert purchase
     const [purchaseResult] = await connection.query(
-      `INSERT INTO purchases (invoice_number, supplier_id, total_amount, purchase_date, note, thumbnail_image) 
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [invoiceNumber, supplier_id, total_amount, purchase_date, note || null, receiptPath]
+      `INSERT INTO purchases (invoice_number, supplier_id, total_amount, purchase_date, note, thumbnail_image, created_by_user_id, created_by_name, created_by_role) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        invoiceNumber,
+        supplier_id,
+        total_amount,
+        purchase_date,
+        note || null,
+        receiptPath,
+        req.user ? req.user.id : null,
+        req.user ? req.user.username : null,
+        req.user ? req.user.role : null
+      ]
     );
 
     const purchaseId = purchaseResult.insertId;

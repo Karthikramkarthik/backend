@@ -591,6 +591,27 @@ const pool = mysql.createPool({
     await connection.query('UPDATE `admins` SET `role_id` = 1 WHERE `role_id` IS NULL');
     console.log('Database auto-migration: Associated existing admin users with Owner role.');
 
+    // Audit tracking migrations for categories, products, suppliers, purchases, customers, expenses, coupons
+    const auditTables = ['categories', 'products', 'suppliers', 'purchases', 'customers', 'expenses', 'coupons'];
+    for (const table of auditTables) {
+      try {
+        await connection.query(`ALTER TABLE \`${table}\` ADD COLUMN \`created_by_user_id\` int(11) DEFAULT NULL`);
+        console.log(`Database auto-migration: Added created_by_user_id column to ${table} table.`);
+      } catch (err) {}
+      try {
+        await connection.query(`ALTER TABLE \`${table}\` ADD COLUMN \`created_by_name\` varchar(100) DEFAULT NULL`);
+        console.log(`Database auto-migration: Added created_by_name column to ${table} table.`);
+      } catch (err) {}
+      try {
+        await connection.query(`ALTER TABLE \`${table}\` ADD COLUMN \`created_by_role\` varchar(50) DEFAULT NULL`);
+        console.log(`Database auto-migration: Added created_by_role column to ${table} table.`);
+      } catch (err) {}
+      try {
+        await connection.query(`ALTER TABLE \`${table}\` ADD COLUMN \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP`);
+        console.log(`Database auto-migration: Added created_at column to ${table} table.`);
+      } catch (err) {}
+    }
+
     console.log('Stock Management Database extension auto-migrations completed.');
   } catch (error) {
     console.error('Database extension migration failed:', error.message);

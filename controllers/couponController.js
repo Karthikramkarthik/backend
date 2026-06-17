@@ -1,10 +1,11 @@
 const db = require('../config/database');
+const { cleanAuditInfo } = require('../middleware/audit');
 
 // 1. List all coupons (Admin CRUD)
 exports.list = async (req, res) => {
   try {
     const [coupons] = await db.query('SELECT * FROM coupons ORDER BY created_at DESC');
-    res.json({ success: true, coupons });
+    res.json({ success: true, coupons: cleanAuditInfo(req, coupons) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -18,7 +19,7 @@ exports.get = async (req, res) => {
     if (coupons.length === 0) {
       return res.status(404).json({ error: 'Coupon not found' });
     }
-    res.json({ success: true, coupon: coupons[0] });
+    res.json({ success: true, coupon: cleanAuditInfo(req, coupons[0]) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -45,8 +46,19 @@ exports.create = async (req, res) => {
     }
 
     const [result] = await db.query(
-      'INSERT INTO coupons (code, type, value, min_order_amount, expiry_date, usage_limit, used_count, status) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
-      [code.toUpperCase(), type, value, min_order_amount || 0, expiry_date, usage_limit || 0, status || 'active']
+      'INSERT INTO coupons (code, type, value, min_order_amount, expiry_date, usage_limit, used_count, status, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
+      [
+        code.toUpperCase(),
+        type,
+        value,
+        min_order_amount || 0,
+        expiry_date,
+        usage_limit || 0,
+        status || 'active',
+        req.user ? req.user.id : null,
+        req.user ? req.user.username : null,
+        req.user ? req.user.role : null
+      ]
     );
 
     res.status(201).json({

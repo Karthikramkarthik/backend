@@ -178,9 +178,9 @@ exports.create = async (req, res) => {
     if (existingCust.length === 0) {
       // Auto-register customer profile inside customers ledger
       await connection.query(`
-        INSERT INTO customers (name, mobile, email, address, status, source)
-        VALUES (?, ?, ?, ?, 'active', 'Website')
-      `, [customer_name, customer_mobile, customer_email || null, shipping_address]);
+        INSERT INTO customers (name, mobile, email, address, status, source, created_by_user_id, created_by_name, created_by_role)
+        VALUES (?, ?, ?, ?, 'active', 'Website', null, ?, 'Customer')
+      `, [customer_name, customer_mobile, customer_email || null, shipping_address, customer_name]);
 
       await connection.query(`
         INSERT INTO notifications (type, message)
@@ -313,9 +313,9 @@ const getOrCreateInvoiceForOrder = async (connection, orderId) => {
     customerId = customers[0].id;
   } else {
     const [insertCust] = await connection.query(`
-      INSERT INTO customers (name, mobile, email, address, status, source)
-      VALUES (?, ?, ?, ?, 'active', 'Website')
-    `, [order.customer_name, order.customer_mobile, order.customer_email || null, order.shipping_address]);
+      INSERT INTO customers (name, mobile, email, address, status, source, created_by_user_id, created_by_name, created_by_role)
+      VALUES (?, ?, ?, ?, 'active', 'Website', null, ?, 'Customer')
+    `, [order.customer_name, order.customer_mobile, order.customer_email || null, order.shipping_address, order.customer_name]);
     customerId = insertCust.insertId;
   }
 

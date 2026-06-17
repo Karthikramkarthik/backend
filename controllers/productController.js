@@ -3,6 +3,7 @@ const path = require('path');
 const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const db = require('../config/database');
+const { cleanAuditInfo } = require('../middleware/audit');
 
 // Helper to slugify category names
 const slugify = (text) => {
@@ -17,7 +18,7 @@ const slugify = (text) => {
 };
 
 // Helper to auto-create category
-const getOrCreateCategoryId = async (categoryName) => {
+const getOrCreateCategoryId = async (categoryName, req) => {
   const name = (categoryName || 'General').trim();
   const [categories] = await db.query('SELECT id FROM categories WHERE LOWER(name) = LOWER(?) LIMIT 1', [name]);
   
@@ -26,12 +27,22 @@ const getOrCreateCategoryId = async (categoryName) => {
   }
   
   const slug = slugify(name);
-  const [result] = await db.query('INSERT INTO categories (name, slug, status) VALUES (?, ?, ?)', [name, slug, 'active']);
+  const [result] = await db.query(
+    'INSERT INTO categories (name, slug, status, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?)',
+    [
+      name,
+      slug,
+      'active',
+      req && req.user ? req.user.id : null,
+      req && req.user ? req.user.username : null,
+      req && req.user ? req.user.role : null
+    ]
+  );
   return result.insertId;
 };
 
 // Helper to auto-create supplier
-const getOrCreateSupplierId = async (supplierName) => {
+const getOrCreateSupplierId = async (supplierName, req) => {
   const name = (supplierName || '').trim();
   if (name === '') return null;
 
@@ -41,8 +52,15 @@ const getOrCreateSupplierId = async (supplierName) => {
   }
 
   const [result] = await db.query(
-    'INSERT INTO suppliers (name, mobile, address) VALUES (?, ?, ?)',
-    [name, '0000000000', 'Imported product supplier']
+    'INSERT INTO suppliers (name, mobile, address, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?)',
+    [
+      name,
+      '0000000000',
+      'Imported product supplier',
+      req && req.user ? req.user.id : null,
+      req && req.user ? req.user.username : null,
+      req && req.user ? req.user.role : null
+    ]
   );
   return result.insertId;
 };
@@ -141,10 +159,12 @@ exports.list = async (req, res) => {
       p.colors = colorsByProduct[p.id] || [];
     });
 
+    const cleanedProducts = cleanAuditInfo(req, products);
+
     if (page > 0 && limit > 0) {
       res.json({
         success: true,
-        products,
+        products: cleanedProducts,
         pagination: {
           total,
           page,
@@ -153,7 +173,7 @@ exports.list = async (req, res) => {
         }
       });
     } else {
-      res.json({ success: true, products });
+      res.json({ success: true, products: cleanedProducts });
     }
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
@@ -175,7 +195,7 @@ exports.get = async (req, res) => {
     product.variants = variants;
     product.colors = colors;
 
-    res.json({ success: true, product });
+    res.json({ success: true, product: cleanAuditInfo(req, product) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -229,11 +249,12 @@ exports.create = async (req, res) => {
 
     const [result] = await db.query(
       `INSERT INTO products 
-       (code, name, category_id, supplier_id, size, age, purchase_price, actual_price, sales_price, discount_percent, stock_quantity, initial_stock_quantity, image, image_back, image_side, image_detail, thumbnail, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (code, name, category_id, supplier_id, size, age, purchase_price, actual_price, sales_price, discount_percent, stock_quantity, initial_stock_quantity, image, image_back, image_side, image_detail, thumbnail, status, created_by_user_id, created_by_name, created_by_role) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         code, name, category_id, supplier_id || null, size || null, age || null,
-        purchase_price, actualPriceVal, salesPriceVal, discountPercentVal, stock_quantity || 0, initialStockQty, imagePath, backPath, sidePath, detailPath, thumbnailPath, status || 'active'
+        purchase_price, actualPriceVal, salesPriceVal, discountPercentVal, stock_quantity || 0, initialStockQty, imagePath, backPath, sidePath, detailPath, thumbnailPath, status || 'active',
+        req.user ? req.user.id : null, req.user ? req.user.username : null, req.user ? req.user.role : null
       ]
     );
 
@@ -661,7 +682,7 @@ exports.import = async (req, res) => {
         if (existing && !hasCategoryHeader) {
           categoryId = existing.category_id;
         } else {
-          categoryId = await getOrCreateCategoryId(categoryName);
+          categoryId = await getOrCreateCategoryId(categoryName, req);
         }
 
         // Resolve Supplier ID
@@ -669,7 +690,7 @@ exports.import = async (req, res) => {
         if (existing && !hasSupplierHeader) {
           supplierId = existing.supplier_id;
         } else {
-          supplierId = await getOrCreateSupplierId(supplierName);
+          supplierId = await getOrCreateSupplierId(supplierName, req);
         }
 
         // Resolve Age
@@ -742,9 +763,12 @@ exports.import = async (req, res) => {
           const sizeVal = size !== '' ? size : null;
           const [result] = await db.query(
             `INSERT INTO products 
-             (code, name, category_id, supplier_id, size, age, purchase_price, sales_price, stock_quantity, initial_stock_quantity, status) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
-            [productCode, productName, categoryId, supplierId, sizeVal, finalAge, purchasePrice, finalSalesPrice, stockQty, stockQty]
+             (code, name, category_id, supplier_id, size, age, purchase_price, sales_price, stock_quantity, initial_stock_quantity, status, created_by_user_id, created_by_name, created_by_role) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+            [
+              productCode, productName, categoryId, supplierId, sizeVal, finalAge, purchasePrice, finalSalesPrice, stockQty, stockQty,
+              req.user ? req.user.id : null, req.user ? req.user.username : null, req.user ? req.user.role : null
+            ]
           );
 
           const productId = result.insertId;

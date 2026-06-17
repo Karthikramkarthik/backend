@@ -185,8 +185,8 @@ exports.customerRegister = async (req, res) => {
 
     // Insert customer
     await db.query(
-      'INSERT INTO customers (name, mobile, email, password, address, status, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, mobile, email || null, passwordHash, address || null, 'active', 'Website']
+      'INSERT INTO customers (name, mobile, email, password, address, status, source, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, mobile, email || null, passwordHash, address || null, 'active', 'Website', null, name, 'Customer']
     );
 
     res.status(201).json({ success: true, message: 'Customer registered successfully!' });

@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { cleanAuditInfo } = require('../middleware/audit');
 
 exports.list = async (req, res) => {
   try {
@@ -18,7 +19,7 @@ exports.list = async (req, res) => {
 
     query += ' ORDER BY name ASC';
     const [customers] = await db.query(query, params);
-    res.json({ success: true, customers });
+    res.json({ success: true, customers: cleanAuditInfo(req, customers) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -31,7 +32,7 @@ exports.get = async (req, res) => {
     if (customers.length === 0) {
       return res.status(404).json({ error: 'Customer not found' });
     }
-    res.json({ success: true, customer: customers[0] });
+    res.json({ success: true, customer: cleanAuditInfo(req, customers[0]) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -45,8 +46,18 @@ exports.create = async (req, res) => {
     }
 
     const [result] = await db.query(
-      'INSERT INTO customers (name, mobile, email, address, status, source) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, mobile, email || null, address || null, status || 'active', source || 'Admin Panel']
+      'INSERT INTO customers (name, mobile, email, address, status, source, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        name,
+        mobile,
+        email || null,
+        address || null,
+        status || 'active',
+        source || 'Admin Panel',
+        req.user ? req.user.id : null,
+        req.user ? req.user.username : null,
+        req.user ? req.user.role : null
+      ]
     );
 
     res.status(201).json({

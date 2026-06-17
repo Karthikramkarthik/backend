@@ -1,9 +1,10 @@
 const db = require('../config/database');
+const { cleanAuditInfo } = require('../middleware/audit');
 
 exports.list = async (req, res) => {
   try {
     const [suppliers] = await db.query('SELECT * FROM suppliers ORDER BY name ASC');
-    res.json({ success: true, suppliers });
+    res.json({ success: true, suppliers: cleanAuditInfo(req, suppliers) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -16,7 +17,7 @@ exports.get = async (req, res) => {
     if (suppliers.length === 0) {
       return res.status(404).json({ error: 'Supplier not found' });
     }
-    res.json({ success: true, supplier: suppliers[0] });
+    res.json({ success: true, supplier: cleanAuditInfo(req, suppliers[0]) });
   } catch (error) {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
@@ -30,8 +31,16 @@ exports.create = async (req, res) => {
     }
 
     const [result] = await db.query(
-      'INSERT INTO suppliers (name, mobile, gst_number, address) VALUES (?, ?, ?, ?)',
-      [name, mobile, gst_number || null, address || null]
+      'INSERT INTO suppliers (name, mobile, gst_number, address, created_by_user_id, created_by_name, created_by_role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        name,
+        mobile,
+        gst_number || null,
+        address || null,
+        req.user ? req.user.id : null,
+        req.user ? req.user.username : null,
+        req.user ? req.user.role : null
+      ]
     );
 
     res.status(201).json({
