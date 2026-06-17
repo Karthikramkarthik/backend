@@ -851,3 +851,39 @@
 [2026-06-17T10:25:20.003Z] [getPermissions] Returning permissions to client.
 [2026-06-17T10:25:31.456Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
 [2026-06-17T10:25:31.457Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T12:50:44.142Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T12:50:44.192Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T12:51:02.669Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T12:51:02.675Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T12:51:04.272Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T12:51:04.273Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T12:51:43.251Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T12:51:43.254Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T12:52:03.432Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T12:52:03.434Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T13:05:18.891Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T13:05:18.914Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T13:08:43.173Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T13:08:43.177Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T13:08:45.163Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T13:08:45.166Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T13:11:31.077Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T13:11:31.082Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T13:21:41.160Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T13:21:41.167Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:20:05.268Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:20:05.313Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:20:16.911Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:20:16.917Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:22:50.093Z] [getPermissions] Hit endpoint. User: {"id":14,"username":"admin2","email":"admin2@example.com","role":"Viewer","roleId":7,"iat":1781677424,"exp":1781706224}
+[2026-06-17T14:22:50.128Z] [getPermissions] User account not found in DB.
+[2026-06-17T14:26:02.523Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:26:02.528Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:28:00.556Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:28:00.578Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:29:42.912Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:29:42.919Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:30:18.101Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:30:18.104Z] [getPermissions] User is Owner. Returning *
+[2026-06-17T14:30:22.581Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1781691931,"exp":1781720731}
+[2026-06-17T14:30:22.584Z] [getPermissions] User is Owner. Returning *

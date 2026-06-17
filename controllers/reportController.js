@@ -16,7 +16,7 @@ const fetchPeriodFinancialStats = async (startDate, endDate) => {
     db.query(`
       SELECT COALESCE(SUM(grand_total), 0) AS revenue
       FROM sales
-      WHERE sale_date BETWEEN ? AND ?
+      WHERE (sale_date BETWEEN ? AND ?) AND status NOT IN ('Cancelled', 'Revised', 'Superseded')
     `, [startDate, endDate]),
     // Sales COGS
     db.query(`
@@ -24,7 +24,7 @@ const fetchPeriodFinancialStats = async (startDate, endDate) => {
       FROM sale_items si
       JOIN sales s ON si.sale_id = s.id
       JOIN products p ON si.product_id = p.id
-      WHERE s.sale_date BETWEEN ? AND ?
+      WHERE (s.sale_date BETWEEN ? AND ?) AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
     `, [startDate, endDate]),
     // Purchases
     db.query(`
@@ -149,7 +149,7 @@ exports.getReports = async (req, res) => {
         db.query(`
           SELECT DATE_FORMAT(sale_date, '%Y-%m') AS month_key, SUM(grand_total) AS revenue
           FROM sales
-          WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND status NOT IN ('Cancelled', 'Revised', 'Superseded')
           GROUP BY month_key
         `),
         db.query(`
@@ -157,7 +157,7 @@ exports.getReports = async (req, res) => {
           FROM sale_items si
           JOIN sales s ON si.sale_id = s.id
           JOIN products p ON si.product_id = p.id
-          WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+          WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
           GROUP BY month_key
         `),
         db.query(`
@@ -182,8 +182,10 @@ exports.getReports = async (req, res) => {
           SUM(si.quantity) AS units_sold,
           SUM(si.total) AS total_revenue
         FROM sale_items si
+        JOIN sales s ON si.sale_id = s.id
         JOIN products p ON si.product_id = p.id
         LEFT JOIN categories c ON p.category_id = c.id
+        WHERE s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
         GROUP BY p.id
         ORDER BY units_sold DESC
         LIMIT 10
@@ -202,7 +204,7 @@ exports.getReports = async (req, res) => {
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.id
         LEFT JOIN sale_items si ON p.id = si.product_id
-        LEFT JOIN sales s ON si.sale_id = s.id
+        LEFT JOIN sales s ON si.sale_id = s.id AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
         WHERE p.status = 'active'
         GROUP BY p.id
         ORDER BY units_sold ASC, p.stock_quantity DESC
@@ -252,13 +254,18 @@ exports.getReports = async (req, res) => {
           COALESCE(SUM(si.quantity), 0) AS units_sold,
           COALESCE(SUM(si.total), 0) AS total_revenue
         FROM products p
-        LEFT JOIN sale_items si ON p.id = si.product_id
+        LEFT JOIN (
+          SELECT si.product_id, si.quantity, si.total 
+          FROM sale_items si 
+          JOIN sales s ON si.sale_id = s.id 
+          WHERE s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
+        ) si ON p.id = si.product_id
         LEFT JOIN categories c ON p.category_id = c.id
         GROUP BY p.id
         ORDER BY units_sold DESC, total_revenue DESC
       `),
       // J. Aggregated totals
-      db.query('SELECT COALESCE(SUM(grand_total), 0) as totalSales FROM sales'),
+      db.query("SELECT COALESCE(SUM(grand_total), 0) as totalSales FROM sales WHERE status NOT IN ('Cancelled', 'Revised', 'Superseded')"),
       db.query('SELECT COALESCE(SUM(total_amount), 0) as totalPurchases FROM purchases'),
       db.query('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses'),
       // K. Personal Usage Report
@@ -447,7 +454,7 @@ exports.customersByProduct = async (req, res) => {
         JOIN products p ON si.product_id = p.id
         LEFT JOIN categories cat ON p.category_id = cat.id
         JOIN customers c ON s.customer_id = c.id
-        WHERE 1=1 ${posWhereStr}
+        WHERE s.status NOT IN ('Cancelled', 'Revised', 'Superseded') ${posWhereStr}
         
         UNION ALL
         
@@ -494,7 +501,7 @@ exports.customersByProduct = async (req, res) => {
         JOIN products p ON si.product_id = p.id
         LEFT JOIN categories cat ON p.category_id = cat.id
         JOIN customers c ON s.customer_id = c.id
-        WHERE 1=1 ${posWhereStr}
+        WHERE s.status NOT IN ('Cancelled', 'Revised', 'Superseded') ${posWhereStr}
         
         UNION ALL
         
@@ -575,7 +582,7 @@ exports.customerPurchaseHistory = async (req, res) => {
       SELECT s.id, s.invoice_number, s.payment_method, s.subtotal, s.discount, s.gst_amount, s.shipping_charge, s.grand_total, 
              DATE_FORMAT(s.sale_date, '%Y-%m-%d') as date, 
              CASE WHEN s.order_number IS NOT NULL THEN 'E-Commerce' ELSE 'POS' END as channel, 
-             'Completed' as status
+             s.status
       FROM sales s
       JOIN customers c ON s.customer_id = c.id
       WHERE c.mobile = ?

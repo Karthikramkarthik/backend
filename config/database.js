@@ -371,6 +371,45 @@ const pool = mysql.createPool({
       // Column already exists, safe to ignore
     }
 
+    // Ensure sales status enum supports Cancelled, Revised, Superseded
+    try {
+      await connection.query("ALTER TABLE `sales` MODIFY COLUMN `status` enum('Generated', 'Sent', 'Cancelled', 'Revised', 'Superseded') NOT NULL DEFAULT 'Generated'");
+      console.log('Database auto-migration: Updated status column in sales table to support Cancelled, Revised, and Superseded.');
+    } catch (err) {
+      console.error('Failed to update status column in sales table:', err.message);
+    }
+
+    // 14. Migrate sales_edit_audit table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`sales_edit_audit\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`sale_id\` int(11) NOT NULL,
+        \`invoice_number\` varchar(50) NOT NULL,
+        \`original_sale_id\` int(11) NOT NULL,
+        \`original_invoice_number\` varchar(50) NOT NULL,
+        \`edited_by_user_id\` int(11) NOT NULL,
+        \`edited_by_name\` varchar(100) NOT NULL,
+        \`edited_by_role\` varchar(50) NOT NULL,
+        \`before_details\` longtext NOT NULL,
+        \`after_details\` longtext NOT NULL,
+        \`reason\` text NOT NULL,
+        \`edited_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        FOREIGN KEY (\`original_sale_id\`) REFERENCES \`sales\` (\`id\`) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Ensure pos_edit_lock_hours exists in settings table
+    try {
+      const [checkLockHours] = await connection.query("SELECT id FROM settings WHERE key_name = 'pos_edit_lock_hours'");
+      if (checkLockHours.length === 0) {
+        await connection.query("INSERT INTO settings (key_name, value, display_name, updated_by) VALUES ('pos_edit_lock_hours', '24', 'Lock POS Edits After (Hours)', 'System')");
+        console.log('Database auto-migration: Added pos_edit_lock_hours setting.');
+      }
+    } catch (err) {
+      console.error('Failed to auto-migrate pos_edit_lock_hours setting:', err.message);
+    }
+
     // Add database indexes for performance optimization
     const indexes = [
       { table: 'products', name: 'idx_products_name', cols: 'name(191)' },

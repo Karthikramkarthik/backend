@@ -28,17 +28,17 @@ exports.getMetrics = async (req, res) => {
       // 1. Consolidated count and sum stats
       db.query(`
         SELECT
-          (SELECT count(*) FROM sales WHERE order_number IS NULL) AS invoices,
+          (SELECT count(*) FROM sales WHERE order_number IS NULL AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) AS invoices,
           (SELECT count(*) FROM customers) AS customers,
           (SELECT count(*) FROM suppliers) AS suppliers,
           (SELECT COUNT(DISTINCT code) FROM products) AS products,
           (SELECT COALESCE(SUM(total_amount), 0) FROM purchases) AS purchases,
-          (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE order_number IS NULL) AS sales,
+          (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE order_number IS NULL AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) AS sales,
           (SELECT COUNT(DISTINCT code) FROM products WHERE stock_quantity <= 10) AS low_stock,
           (SELECT count(*) FROM orders) AS total_orders,
           (SELECT count(*) FROM orders WHERE status = 'Pending') AS pending_orders,
           (SELECT COALESCE(SUM(grand_total), 0) FROM orders WHERE status NOT IN ('Cancelled', 'Returned')) AS ecom_sales,
-          (SELECT COALESCE(SUM(shipping_charge), 0) FROM sales WHERE order_number IS NULL) as store_shipping_val,
+          (SELECT COALESCE(SUM(shipping_charge), 0) FROM sales WHERE order_number IS NULL AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) as store_shipping_val,
           (SELECT COALESCE(SUM(shipping_charge), 0) FROM orders WHERE status NOT IN ('Cancelled', 'Returned')) as ecom_shipping_val,
           (SELECT COALESCE(SUM(purchase_price * quantity), 0) FROM internal_consumptions) AS personal_usage_cost
       `),
@@ -48,7 +48,7 @@ exports.getMetrics = async (req, res) => {
         FROM sale_items si 
         JOIN products p ON si.product_id = p.id
         JOIN sales s ON si.sale_id = s.id
-        WHERE s.order_number IS NULL
+        WHERE s.order_number IS NULL AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
       `),
       // 3. COGS for e-commerce orders
       db.query(`
@@ -70,7 +70,7 @@ exports.getMetrics = async (req, res) => {
         SELECT s.id, s.invoice_number, c.name as customer, s.grand_total, DATE_FORMAT(s.sale_date, '%Y-%m-%d') as sale_date 
         FROM sales s 
         JOIN customers c ON s.customer_id = c.id 
-        WHERE s.order_number IS NULL
+        WHERE s.order_number IS NULL AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
         ORDER BY s.created_at DESC LIMIT 5
       `),
       // 6. Recent e-commerce orders
@@ -83,7 +83,7 @@ exports.getMetrics = async (req, res) => {
       db.query(`
         SELECT p.id, p.name, p.code, p.image, SUM(combined.qty) as total_qty, SUM(combined.tot) as total_revenue
         FROM (
-          SELECT product_id, quantity as qty, total as tot FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.order_number IS NULL
+          SELECT product_id, quantity as qty, total as tot FROM sale_items si JOIN sales s ON si.sale_id = s.id WHERE s.order_number IS NULL AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
           UNION ALL
           SELECT product_id, quantity as qty, total as tot FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.status NOT IN ('Cancelled', 'Returned')
         ) combined
@@ -96,7 +96,7 @@ exports.getMetrics = async (req, res) => {
       db.query(`
         SELECT DATE_FORMAT(sale_date, '%Y-%m-%d') as sale_date, SUM(grand_total) AS revenue
         FROM sales
-        WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND order_number IS NULL
+        WHERE sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND order_number IS NULL AND status NOT IN ('Cancelled', 'Revised', 'Superseded')
         GROUP BY sale_date
       `),
       // 9. 30-day store daily cogs
@@ -105,7 +105,7 @@ exports.getMetrics = async (req, res) => {
         FROM sale_items si
         JOIN sales s ON si.sale_id = s.id
         JOIN products p ON si.product_id = p.id
-        WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND s.order_number IS NULL
+        WHERE s.sale_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND s.order_number IS NULL AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
         GROUP BY s.sale_date
       `),
       // 10. 30-day ecom daily revenue
