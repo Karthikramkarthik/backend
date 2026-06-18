@@ -19,14 +19,23 @@ const pool = mysql.createPool({
     connection = await pool.getConnection();
     console.log('Connected to MySQL Database successfully via connection pool.');
 
-    const fs = require('fs');
+    // Ensure tax-related columns exist in purchases table
     try {
-      const [columns] = await connection.query('DESCRIBE purchase_items');
-      const [indexes] = await connection.query('SHOW INDEX FROM purchase_items');
-      fs.writeFileSync('inspect_output.txt', JSON.stringify({ columns, indexes }, null, 2));
-    } catch (err) {
-      fs.writeFileSync('inspect_output.txt', 'Error: ' + err.message);
-    }
+      await connection.query('ALTER TABLE `purchases` ADD COLUMN `subtotal` decimal(12,2) DEFAULT NULL AFTER `supplier_id`');
+      console.log('Database auto-migration: Added subtotal column to purchases table.');
+    } catch (err) {}
+    try {
+      await connection.query("ALTER TABLE `purchases` ADD COLUMN `tax_type` enum('fixed', 'percentage') DEFAULT NULL AFTER `subtotal`");
+      console.log('Database auto-migration: Added tax_type column to purchases table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `purchases` ADD COLUMN `tax_rate` decimal(10,2) DEFAULT NULL AFTER `tax_type`');
+      console.log('Database auto-migration: Added tax_rate column to purchases table.');
+    } catch (err) {}
+    try {
+      await connection.query('ALTER TABLE `purchases` ADD COLUMN `tax_amount` decimal(12,2) DEFAULT NULL AFTER `tax_rate`');
+      console.log('Database auto-migration: Added tax_amount column to purchases table.');
+    } catch (err) {}
 
     // 1. Migrate orders table
     await connection.query(`
@@ -399,6 +408,22 @@ const pool = mysql.createPool({
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // Migrate purchase_audit_logs table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`purchase_audit_logs\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`purchase_id\` int(11) NOT NULL,
+        \`invoice_number\` varchar(50) NOT NULL,
+        \`action\` enum('Edit', 'Delete') NOT NULL,
+        \`performed_by_user_id\` int(11) NOT NULL,
+        \`performed_by_name\` varchar(100) NOT NULL,
+        \`performed_by_role\` varchar(50) NOT NULL,
+        \`previous_values\` longtext NOT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // Ensure pos_edit_lock_hours exists in settings table
     try {
       const [checkLockHours] = await connection.query("SELECT id FROM settings WHERE key_name = 'pos_edit_lock_hours'");
@@ -650,6 +675,26 @@ const pool = mysql.createPool({
         console.log(`Database auto-migration: Added created_at column to ${table} table.`);
       } catch (err) {}
     }
+
+    // 15. Migrate email_logs table
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`email_logs\` (
+        \`id\` int(11) NOT NULL AUTO_INCREMENT,
+        \`recipient\` varchar(255) NOT NULL,
+        \`subject\` varchar(255) NOT NULL,
+        \`body\` text NOT NULL,
+        \`status\` enum('Sent', 'Failed', 'Pending Retry') NOT NULL DEFAULT 'Pending Retry',
+        \`error_message\` text DEFAULT NULL,
+        \`attempts\` int(11) DEFAULT 0,
+        \`order_number\` varchar(50) DEFAULT NULL,
+        \`invoice_number\` varchar(50) DEFAULT NULL,
+        \`created_at\` timestamp DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (\`id\`),
+        UNIQUE KEY \`idx_invoice_recipient\` (\`invoice_number\`, \`recipient\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    console.log('Database auto-migration: Created email_logs table.');
 
     console.log('Stock Management Database extension auto-migrations completed.');
   } catch (error) {

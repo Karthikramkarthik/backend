@@ -1,5 +1,95 @@
 {
-  "columns": [
+  "purchasesColumns": [
+    {
+      "Field": "id",
+      "Type": "int(11)",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": null,
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "invoice_number",
+      "Type": "varchar(50)",
+      "Null": "NO",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "supplier_id",
+      "Type": "int(11)",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "total_amount",
+      "Type": "decimal(12,2)",
+      "Null": "NO",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "purchase_date",
+      "Type": "date",
+      "Null": "NO",
+      "Key": "MUL",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "note",
+      "Type": "text",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "thumbnail_image",
+      "Type": "varchar(255)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "created_at",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "created_by_user_id",
+      "Type": "int(11)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "created_by_name",
+      "Type": "varchar(100)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    },
+    {
+      "Field": "created_by_role",
+      "Type": "varchar(50)",
+      "Null": "YES",
+      "Key": "",
+      "Default": null,
+      "Extra": ""
+    }
+  ],
+  "purchaseItemsColumns": [
     {
       "Field": "id",
       "Type": "int(11)",
@@ -55,53 +145,6 @@
       "Key": "",
       "Default": null,
       "Extra": ""
-    }
-  ],
-  "indexes": [
-    {
-      "Table": "purchase_items",
-      "Non_unique": 0,
-      "Key_name": "PRIMARY",
-      "Seq_in_index": 1,
-      "Column_name": "id",
-      "Collation": "A",
-      "Cardinality": 0,
-      "Sub_part": null,
-      "Packed": null,
-      "Null": "",
-      "Index_type": "BTREE",
-      "Comment": "",
-      "Index_comment": ""
-    },
-    {
-      "Table": "purchase_items",
-      "Non_unique": 1,
-      "Key_name": "idx_purchase_items_product",
-      "Seq_in_index": 1,
-      "Column_name": "product_id",
-      "Collation": "A",
-      "Cardinality": 0,
-      "Sub_part": null,
-      "Packed": null,
-      "Null": "",
-      "Index_type": "BTREE",
-      "Comment": "",
-      "Index_comment": ""
-    },
-    {
-      "Table": "purchase_items",
-      "Non_unique": 1,
-      "Key_name": "idx_purchase_items_purchase",
-      "Seq_in_index": 1,
-      "Column_name": "purchase_id",
-      "Collation": "A",
-      "Cardinality": 0,
-      "Sub_part": null,
-      "Packed": null,
-      "Null": "",
-      "Index_type": "BTREE",
-      "Comment": "",
-      "Index_comment": ""
     }
   ]
 }

@@ -1,4 +1,6 @@
 const db = require('../config/database');
+const emailService = require('../services/emailService');
+
 
 exports.list = async (req, res) => {
   try {
@@ -142,6 +144,10 @@ exports.create = async (req, res) => {
     }
 
     await connection.commit();
+
+    // Trigger POS checkout notification email in the background asynchronously
+    emailService.sendPOSNotification(saleId);
+
     res.status(201).json({
       success: true,
       message: 'Sale transaction completed successfully!',

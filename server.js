@@ -133,6 +133,10 @@ io.on('connection', (socket) => {
   });
 });
 
+// Start background email retry scheduler
+const emailService = require('./services/emailService');
+emailService.startScheduler();
+
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {

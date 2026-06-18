@@ -140,10 +140,43 @@ exports.getPurchases = async (req, res) => {
     const [purchases] = await db.query(query, params);
     const totalAmount = purchases.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0);
 
+    // Fetch detailed product-wise purchase history for this supplier
+    let prodQuery = `
+      SELECT 
+        pi.id,
+        p.invoice_number,
+        DATE_FORMAT(p.purchase_date, '%Y-%m-%d') as purchase_date,
+        pr.name as product_name,
+        pr.code as product_code,
+        pi.size,
+        pi.quantity,
+        pi.price as cost_price,
+        pi.total as subtotal
+      FROM purchase_items pi
+      JOIN purchases p ON pi.purchase_id = p.id
+      JOIN products pr ON pi.product_id = pr.id
+      WHERE p.supplier_id = ?
+    `;
+    const prodParams = [id];
+
+    if (startDate) {
+      prodQuery += ' AND p.purchase_date >= ?';
+      prodParams.push(startDate);
+    }
+    if (endDate) {
+      prodQuery += ' AND p.purchase_date <= ?';
+      prodParams.push(endDate);
+    }
+
+    prodQuery += ' ORDER BY p.purchase_date DESC, pi.id DESC';
+
+    const [productPurchases] = await db.query(prodQuery, prodParams);
+
     res.json({
       success: true,
       supplier: suppliers[0],
       purchases,
+      productPurchases,
       totalAmount
     });
   } catch (error) {

@@ -22,9 +22,9 @@ try {
      $categories = $pdo->query("SELECT id, name, created_by_user_id, created_by_name, created_by_role, created_at FROM categories")->fetchAll();
      
      echo json_encode([
-         'success' => true,
-         'admins' => $admins,
-         'categories' => $categories
+          'success' => true,
+          'admins' => $admins,
+          'categories' => $categories
      ]);
 } catch (\PDOException $e) {
      echo json_encode([
