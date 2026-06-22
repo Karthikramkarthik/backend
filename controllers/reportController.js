@@ -133,6 +133,10 @@ exports.getReports = async (req, res) => {
       [[{ totalSales }]],
       [[{ totalPurchases }]],
       [[{ totalExpenses }]],
+      [[{ totalPaidAmount }]],
+      [[{ totalPendingAmount }]],
+      [[{ pendingCount }]],
+      [[{ paidCount }]],
       [personalUsage]
     ] = await Promise.all([
       // A. Period stats
@@ -268,6 +272,10 @@ exports.getReports = async (req, res) => {
       db.query("SELECT COALESCE(SUM(grand_total), 0) as totalSales FROM sales WHERE status NOT IN ('Cancelled', 'Revised', 'Superseded')"),
       db.query('SELECT COALESCE(SUM(total_amount), 0) as totalPurchases FROM purchases'),
       db.query('SELECT COALESCE(SUM(amount), 0) as totalExpenses FROM expenses'),
+      db.query("SELECT COALESCE(SUM(grand_total), 0) as totalPaidAmount FROM sales WHERE payment_status = 'Paid' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')"),
+      db.query("SELECT COALESCE(SUM(grand_total), 0) as totalPendingAmount FROM sales WHERE payment_status = 'Pending' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')"),
+      db.query("SELECT COUNT(*) as pendingCount FROM sales WHERE payment_status = 'Pending' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')"),
+      db.query("SELECT COUNT(*) as paidCount FROM sales WHERE payment_status = 'Paid' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')"),
       // K. Personal Usage Report
       db.query(`
         SELECT 
@@ -342,7 +350,11 @@ exports.getReports = async (req, res) => {
         sales: parseFloat(totalSales),
         purchases: parseFloat(totalPurchases),
         expenses: parseFloat(totalExpenses),
-        netProfit: parseFloat(totalSales) - parseFloat(totalPurchases) - parseFloat(totalExpenses)
+        netProfit: parseFloat(totalSales) - parseFloat(totalPurchases) - parseFloat(totalExpenses),
+        totalPaidAmount: parseFloat(totalPaidAmount),
+        totalPendingAmount: parseFloat(totalPendingAmount),
+        pendingPaymentsCount: parseInt(pendingCount),
+        paidPaymentsCount: parseInt(paidCount)
       },
       timeline: {
         labels: timelineLabels,

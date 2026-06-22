@@ -73,8 +73,8 @@ exports.create = async (req, res) => {
 
     // Record sale
     const [saleResult] = await connection.query(
-      `INSERT INTO sales (invoice_number, customer_id, payment_method, subtotal, discount, gst_amount, shipping_charge, grand_total, sale_date) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE())`,
+      `INSERT INTO sales (invoice_number, customer_id, payment_method, subtotal, discount, gst_amount, shipping_charge, grand_total, sale_date, payment_status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'Pending')`,
       [
         invoiceNumber,
         customer_id,
@@ -275,6 +275,10 @@ exports.edit = async (req, res) => {
       return res.status(400).json({ error: `Cannot edit this invoice because its status is already ${originalSale.status}` });
     }
 
+    if (originalSale.payment_status === 'Paid') {
+      return res.status(400).json({ error: 'Cannot edit this invoice because it is already paid.' });
+    }
+
     // 2. Check lock duration
     const [settings] = await connection.query("SELECT value FROM settings WHERE key_name = 'pos_edit_lock_hours' LIMIT 1");
     const lockHours = settings.length > 0 ? parseFloat(settings[0].value) : 24;
@@ -330,8 +334,8 @@ exports.edit = async (req, res) => {
 
     // 7. Create new revised sale
     const [newSaleResult] = await connection.query(
-      `INSERT INTO sales (invoice_number, order_number, customer_id, payment_method, subtotal, discount, gst_amount, shipping_charge, grand_total, sale_date, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Generated')`,
+      `INSERT INTO sales (invoice_number, order_number, customer_id, payment_method, subtotal, discount, gst_amount, shipping_charge, grand_total, sale_date, status, payment_status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Generated', 'Pending')`,
       [
         newInvoiceNumber,
         originalSale.order_number,
@@ -470,4 +474,68 @@ exports.getAudits = async (req, res) => {
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };
+
+// Update payment status manually
+exports.updatePaymentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payment_status, payment_method } = req.body;
+
+    const validPaymentStatus = ['Pending', 'Paid'];
+    if (!payment_status || !validPaymentStatus.includes(payment_status)) {
+      return res.status(400).json({ error: 'Invalid or missing payment status' });
+    }
+
+    // Fetch current sale to check if it's already Paid
+    const [sales] = await db.query('SELECT * FROM sales WHERE id = ? LIMIT 1', [id]);
+    if (sales.length === 0) {
+      return res.status(404).json({ error: 'Sale record not found' });
+    }
+
+    const sale = sales[0];
+
+    // Prevent changing back to Pending if it's already Paid (optional lock)
+    if (sale.payment_status === 'Paid' && payment_status === 'Pending') {
+      const isAuthorized = ['Owner', 'Admin'].includes(req.user.role);
+      if (!isAuthorized) {
+        return res.status(403).json({ error: 'Only administrators can revert a completed payment status.' });
+      }
+    }
+
+    const paidAtVal = payment_status === 'Paid' ? new Date() : null;
+    const updatedByVal = req.user.username || 'System';
+    const updatedAtVal = new Date();
+
+    // Prepare update query
+    let queryStr = `
+      UPDATE sales 
+      SET payment_status = ?, 
+          paid_at = ?, 
+          payment_status_updated_by = ?, 
+          payment_status_updated_at = ?
+    `;
+    const params = [payment_status, paidAtVal, updatedByVal, updatedAtVal];
+
+    if (payment_method) {
+      queryStr += `, payment_method = ?`;
+      params.push(payment_method);
+    }
+
+    queryStr += ` WHERE id = ?`;
+    params.push(id);
+
+    await db.query(queryStr, params);
+
+    res.json({ 
+      success: true, 
+      message: `Invoice payment status updated to ${payment_status} successfully!`,
+      payment_status,
+      paid_at: paidAtVal,
+      payment_method: payment_method || sale.payment_method
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
 

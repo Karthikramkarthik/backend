@@ -40,7 +40,10 @@ exports.getMetrics = async (req, res) => {
           (SELECT COALESCE(SUM(grand_total), 0) FROM orders WHERE status NOT IN ('Cancelled', 'Returned')) AS ecom_sales,
           (SELECT COALESCE(SUM(shipping_charge), 0) FROM sales WHERE order_number IS NULL AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) as store_shipping_val,
           (SELECT COALESCE(SUM(shipping_charge), 0) FROM orders WHERE status NOT IN ('Cancelled', 'Returned')) as ecom_shipping_val,
-          (SELECT COALESCE(SUM(purchase_price * quantity), 0) FROM internal_consumptions) AS personal_usage_cost
+          (SELECT COALESCE(SUM(purchase_price * quantity), 0) FROM internal_consumptions) AS personal_usage_cost,
+          (SELECT count(*) FROM sales WHERE payment_status = 'Pending' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) AS pending_payments_count,
+          (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE payment_status = 'Pending' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) AS pending_payments_amount,
+          (SELECT COALESCE(SUM(grand_total), 0) FROM sales WHERE payment_status = 'Paid' AND status NOT IN ('Cancelled', 'Revised', 'Superseded')) AS paid_revenue
       `),
       // 2. COGS for store sales
       db.query(`
@@ -139,7 +142,10 @@ exports.getMetrics = async (req, res) => {
       ecom_sales,
       store_shipping_val,
       ecom_shipping_val,
-      personal_usage_cost
+      personal_usage_cost,
+      pending_payments_count,
+      pending_payments_amount,
+      paid_revenue
     } = counts;
 
     const store_shipping = parseFloat(store_shipping_val || 0);
@@ -250,7 +256,10 @@ exports.getMetrics = async (req, res) => {
         store_shipping: store_shipping,
         ecom_shipping: ecom_shipping,
         total_shipping: totalShipping,
-        personal_usage_cost: parseFloat(personal_usage_cost || 0)
+        personal_usage_cost: parseFloat(personal_usage_cost || 0),
+        pending_payments_count: parseInt(pending_payments_count || 0),
+        pending_payments_amount: parseFloat(pending_payments_amount || 0),
+        paid_revenue: parseFloat(paid_revenue || 0)
       },
       recentPurchases,
       recentSales,

@@ -388,6 +388,31 @@ const pool = mysql.createPool({
       console.error('Failed to update status column in sales table:', err.message);
     }
 
+    // Ensure payment_status column exists in sales table
+    try {
+      await connection.query("ALTER TABLE `sales` ADD COLUMN `payment_status` enum('Pending', 'Paid') NOT NULL DEFAULT 'Pending' AFTER `status`");
+      console.log('Database auto-migration: Added payment_status column to sales table.');
+    } catch (err) {}
+
+    // Ensure paid_at column exists in sales table
+    try {
+      await connection.query("ALTER TABLE `sales` ADD COLUMN `paid_at` datetime DEFAULT NULL AFTER `payment_status`");
+      console.log('Database auto-migration: Added paid_at column to sales table.');
+    } catch (err) {}
+
+    // Ensure payment_status_updated_by column exists in sales table
+    try {
+      await connection.query("ALTER TABLE `sales` ADD COLUMN `payment_status_updated_by` varchar(100) DEFAULT NULL AFTER `paid_at`");
+      console.log('Database auto-migration: Added payment_status_updated_by column to sales table.');
+    } catch (err) {}
+
+    // Ensure payment_status_updated_at column exists in sales table
+    try {
+      await connection.query("ALTER TABLE `sales` ADD COLUMN `payment_status_updated_at` datetime DEFAULT NULL AFTER `payment_status_updated_by`");
+      console.log('Database auto-migration: Added payment_status_updated_at column to sales table.');
+    } catch (err) {}
+
+
     // 14. Migrate sales_edit_audit table
     await connection.query(`
       CREATE TABLE IF NOT EXISTS \`sales_edit_audit\` (

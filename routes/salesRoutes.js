@@ -10,6 +10,7 @@ router.get('/:id', authMiddleware, checkPermission('Sales', 'View'), salesContro
 router.post('/', authMiddleware, checkPermission('Sales', 'Create'), salesController.create);
 router.delete('/:id', authMiddleware, checkPermission('Sales', 'Delete'), salesController.delete);
 router.put('/:id/status', authMiddleware, checkPermission('Sales', 'Edit'), salesController.updateStatus);
+router.put('/:id/payment-status', authMiddleware, checkPermission('Sales', 'Edit'), salesController.updatePaymentStatus);
 router.post('/:id/edit', authMiddleware, checkPermission('Sales', 'Edit'), salesController.edit);
 router.get('/:id/audits', authMiddleware, checkPermission('Sales', 'View'), salesController.getAudits);
 
