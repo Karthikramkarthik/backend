@@ -687,3 +687,113 @@ exports.customerPurchaseHistory = async (req, res) => {
   }
 };
 
+exports.revenueHistory = async (req, res) => {
+  try {
+    const { interval, source, startDate, endDate } = req.query;
+
+    // 1. Determine grouping expression based on interval
+    let groupExpr = "s.sale_date"; // Default daily
+    if (interval === 'weekly') {
+      groupExpr = "DATE_SUB(s.sale_date, INTERVAL WEEKDAY(s.sale_date) DAY)";
+    } else if (interval === 'monthly') {
+      groupExpr = "DATE_FORMAT(s.sale_date, '%Y-%m-01')";
+    } else if (interval === 'yearly') {
+      groupExpr = "DATE_FORMAT(s.sale_date, '%Y-01-01')";
+    }
+
+    // 2. Build where clauses (POS + Invoices + Website Orders are stored in sales)
+    let whereClauses = ["s.status NOT IN ('Cancelled', 'Revised', 'Superseded')"];
+    const params = [];
+
+    // Filter by source
+    if (source === 'pos') {
+      whereClauses.push("s.order_number IS NULL AND s.payment_status = 'Paid'");
+    } else if (source === 'invoice') {
+      whereClauses.push("s.order_number IS NULL AND s.payment_status = 'Pending'");
+    } else if (source === 'website') {
+      whereClauses.push("s.order_number IS NOT NULL");
+    }
+
+    // Filter by date range
+    if (startDate) {
+      whereClauses.push("s.sale_date >= ?");
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push("s.sale_date <= ?");
+      params.push(endDate);
+    }
+
+    const whereStr = whereClauses.join(' AND ');
+
+    let selectSourceVal = `'All Sources'`;
+    if (source === 'pos') selectSourceVal = `'POS Sales'`;
+    else if (source === 'invoice') selectSourceVal = `'Invoices'`;
+    else if (source === 'website') selectSourceVal = `'Website Orders'`;
+
+    // 3. Query aggregated revenue history grouped by the selected date interval
+    const query = `
+      SELECT 
+        DATE_FORMAT(${groupExpr}, '%Y-%m-%d') AS date,
+        COUNT(DISTINCT s.id) AS orders_count,
+        SUM(s.grand_total) AS revenue,
+        SUM(s.shipping_charge) AS shipping_amount,
+        SUM(s.grand_total - s.shipping_charge - COALESCE(cogs.cogs_val, 0)) AS profit,
+        ${selectSourceVal} AS revenue_source,
+        MAX(COALESCE(s.payment_status_updated_by, 'Admin')) AS created_by
+      FROM sales s
+      LEFT JOIN (
+        SELECT si.sale_id, SUM(p.purchase_price * si.quantity) AS cogs_val
+        FROM sale_items si
+        JOIN products p ON si.product_id = p.id
+        GROUP BY si.sale_id
+      ) cogs ON s.id = cogs.sale_id
+      WHERE ${whereStr}
+      GROUP BY date
+      ORDER BY date DESC
+    `;
+
+    // 4. Query summary totals
+    const summaryQuery = `
+      SELECT 
+        COUNT(DISTINCT s.id) AS total_orders,
+        SUM(s.grand_total) AS total_revenue,
+        SUM(s.shipping_charge) AS total_shipping,
+        SUM(s.grand_total - s.shipping_charge - COALESCE(cogs.cogs_val, 0)) AS total_profit
+      FROM sales s
+      LEFT JOIN (
+        SELECT si.sale_id, SUM(p.purchase_price * si.quantity) AS cogs_val
+        FROM sale_items si
+        JOIN products p ON si.product_id = p.id
+        GROUP BY si.sale_id
+      ) cogs ON s.id = cogs.sale_id
+      WHERE ${whereStr}
+    `;
+
+    const [historyRows] = await db.query(query, params);
+    const [[summary]] = await db.query(summaryQuery, params);
+
+    res.json({
+      success: true,
+      summary: {
+        total_orders: summary ? parseInt(summary.total_orders || 0) : 0,
+        total_revenue: summary ? parseFloat(summary.total_revenue || 0) : 0.0,
+        total_shipping: summary ? parseFloat(summary.total_shipping || 0) : 0.0,
+        total_profit: summary ? parseFloat(summary.total_profit || 0) : 0.0
+      },
+      history: historyRows.map(row => ({
+        date: row.date,
+        orders_count: parseInt(row.orders_count || 0),
+        revenue: parseFloat(row.revenue || 0),
+        shipping_amount: parseFloat(row.shipping_amount || 0),
+        profit: parseFloat(row.profit || 0),
+        revenue_source: row.revenue_source,
+        created_by: row.created_by
+      }))
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
