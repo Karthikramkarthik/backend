@@ -1147,3 +1147,5 @@
 [2026-06-25T14:38:26.275Z] [getPermissions] User is Owner. Returning *
 [2026-06-25T14:41:45.244Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1782384317,"exp":1782413117}
 [2026-06-25T14:41:45.246Z] [getPermissions] User is Owner. Returning *
+[2026-06-26T10:57:54.964Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1782471474,"exp":1782500274}
+[2026-06-26T10:57:54.969Z] [getPermissions] User is Owner. Returning *
