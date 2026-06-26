@@ -180,6 +180,7 @@ exports.getReports = async (req, res) => {
       // C. Top-selling products
       db.query(`
         SELECT 
+          p.id,
           p.code,
           p.name,
           c.name AS category_name,
@@ -252,6 +253,7 @@ exports.getReports = async (req, res) => {
       // I. All product sales
       db.query(`
         SELECT 
+          p.id,
           p.code,
           p.name,
           c.name AS category_name,
@@ -790,6 +792,162 @@ exports.revenueHistory = async (req, res) => {
         revenue_source: row.revenue_source,
         created_by: row.created_by
       }))
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+exports.productPurchaseHistory = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { startDate, endDate, customer, invoice, source } = req.query;
+
+    // Fetch product details
+    const [products] = await db.query('SELECT name, code FROM products WHERE id = ? LIMIT 1', [productId]);
+    if (products.length === 0) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    const product = products[0];
+
+    let whereClauses = [];
+    const params = [];
+
+    if (startDate) {
+      whereClauses.push("purchase_date >= ?");
+      params.push(startDate);
+    }
+    if (endDate) {
+      whereClauses.push("purchase_date <= ?");
+      params.push(endDate);
+    }
+
+    if (customer) {
+      whereClauses.push("(customer_name LIKE ? OR customer_mobile LIKE ?)");
+      params.push(`%${customer}%`, `%${customer}%`);
+    }
+
+    if (invoice) {
+      whereClauses.push("(invoice_number LIKE ? OR order_number LIKE ?)");
+      params.push(`%${invoice}%`, `%${invoice}%`);
+    }
+
+    if (source && source !== 'all') {
+      whereClauses.push("order_source = ?");
+      params.push(source === 'pos' ? 'POS' : 'Website');
+    }
+
+    const whereStr = whereClauses.length > 0 ? ' WHERE ' + whereClauses.join(' AND ') : '';
+
+    const subquery = `
+      SELECT 
+        c.name AS customer_name,
+        c.mobile AS customer_mobile,
+        s.order_number AS order_number,
+        s.invoice_number AS invoice_number,
+        DATE_FORMAT(s.sale_date, '%Y-%m-%d') AS purchase_date,
+        si.quantity AS quantity_purchased,
+        si.rate AS selling_price,
+        s.payment_status AS payment_status,
+        CASE WHEN s.order_number IS NOT NULL THEN 'Website' ELSE 'POS' END AS order_source,
+        c.id AS customer_id,
+        s.id AS sale_id,
+        NULL AS order_id
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      JOIN customers c ON s.customer_id = c.id
+      WHERE si.product_id = ? AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
+
+      UNION ALL
+
+      SELECT 
+        o.customer_name AS customer_name,
+        o.customer_mobile AS customer_mobile,
+        o.order_number AS order_number,
+        NULL AS invoice_number,
+        DATE_FORMAT(o.order_date, '%Y-%m-%d') AS purchase_date,
+        oi.quantity AS quantity_purchased,
+        oi.price AS selling_price,
+        o.status AS payment_status,
+        'Website' AS order_source,
+        cust.id AS customer_id,
+        NULL AS sale_id,
+        o.id AS order_id
+      FROM order_items oi
+      JOIN orders o ON oi.order_id = o.id
+      LEFT JOIN customers cust ON o.customer_mobile = cust.mobile
+      WHERE oi.product_id = ? AND o.invoice_number IS NULL AND o.status NOT IN ('Cancelled', 'Returned')
+    `;
+
+    // 1. Get totals and summary stats
+    const statsQuery = `
+      SELECT 
+        COUNT(*) AS total_records,
+        COALESCE(COUNT(DISTINCT customer_mobile), 0) AS total_customers,
+        COALESCE(SUM(combined.quantity_purchased), 0) AS total_quantity_sold
+      FROM (
+        ${subquery}
+      ) AS combined
+      ${whereStr}
+    `;
+
+    const statsParams = [productId, productId, ...params];
+    const [[stats]] = await db.query(statsQuery, statsParams);
+
+    const totalRecords = stats ? stats.total_records : 0;
+    const totalCustomers = stats ? stats.total_customers : 0;
+    const totalQuantitySold = stats ? stats.total_quantity_sold : 0;
+
+    // 2. Get paginated records list
+    const listQuery = `
+      SELECT * 
+      FROM (
+        ${subquery}
+      ) AS combined
+      ${whereStr}
+      ORDER BY purchase_date DESC, sale_id DESC, order_id DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const listParams = [productId, productId, ...params, limit, offset];
+    const [history] = await db.query(listQuery, listParams);
+
+    res.json({
+      success: true,
+      product: {
+        id: productId,
+        name: product.name,
+        code: product.code
+      },
+      summary: {
+        total_records: totalRecords,
+        total_customers: totalCustomers,
+        total_quantity_sold: totalQuantitySold
+      },
+      history: history.map(row => ({
+        customer_name: row.customer_name || 'Guest Customer',
+        customer_mobile: row.customer_mobile,
+        order_number: row.order_number,
+        invoice_number: row.invoice_number,
+        purchase_date: row.purchase_date,
+        quantity_purchased: parseInt(row.quantity_purchased || 0),
+        selling_price: parseFloat(row.selling_price || 0),
+        payment_status: row.payment_status,
+        order_source: row.order_source,
+        customer_id: row.customer_id,
+        sale_id: row.sale_id,
+        order_id: row.order_id
+      })),
+      pagination: {
+        page,
+        limit,
+        total: totalRecords
+      }
     });
 
   } catch (error) {
