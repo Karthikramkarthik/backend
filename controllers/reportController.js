@@ -946,11 +946,176 @@ exports.productPurchaseHistory = async (req, res) => {
       pagination: {
         page,
         limit,
-        total: totalRecords
       }
     });
 
   } catch (error) {
+    res.status(500).json({ error: 'Server error: ' + error.message });
+  }
+};
+
+exports.productSoldDetails = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    // 1. Fetch product details
+    const [products] = await db.query(
+      'SELECT id, name, code, sales_price, purchase_price, stock_quantity, initial_stock_quantity FROM products WHERE id = ? LIMIT 1',
+      [productId]
+    );
+    if (products.length === 0) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    const product = products[0];
+
+    // 2. Fetch units sold and actual revenue from sale_items (excluding cancelled/revised/superseded)
+    const [salesStats] = await db.query(`
+      SELECT 
+        COALESCE(SUM(si.quantity), 0) AS units_sold,
+        COALESCE(SUM(si.total), 0) AS total_sales_amount
+      FROM sale_items si
+      JOIN sales s ON si.sale_id = s.id
+      WHERE si.product_id = ? AND s.status NOT IN ('Cancelled', 'Revised', 'Superseded')
+    `, [productId]);
+    const unitsSold = parseInt(salesStats[0].units_sold || 0);
+    const totalSalesAmount = parseFloat(salesStats[0].total_sales_amount || 0);
+    const avgSellingPrice = unitsSold > 0 ? (totalSalesAmount / unitsSold) : parseFloat(product.sales_price || 0);
+
+    // 3. Fetch purchase details for calculations
+    const [purchaseStats] = await db.query(`
+      SELECT 
+        COALESCE(SUM(quantity), 0) AS total_purchased_units,
+        COALESCE(SUM(total) / SUM(quantity), 0) AS average_purchase_price
+      FROM purchase_items
+      WHERE product_id = ?
+    `, [productId]);
+
+    const totalPurchasedUnits = parseInt(purchaseStats[0].total_purchased_units || 0);
+    let avgPurchasePrice = parseFloat(purchaseStats[0].average_purchase_price || 0);
+
+    // Latest purchase price
+    const [latestPurchase] = await db.query(`
+      SELECT pi.price
+      FROM purchase_items pi
+      JOIN purchases p ON pi.purchase_id = p.id
+      WHERE pi.product_id = ?
+      ORDER BY p.purchase_date DESC, p.id DESC
+      LIMIT 1
+    `, [productId]);
+
+    let latestPurchasePrice = latestPurchase.length > 0 ? parseFloat(latestPurchase[0].price || 0) : 0;
+
+    // Fallbacks if no purchase records found
+    if (totalPurchasedUnits === 0 || avgPurchasePrice === 0) {
+      avgPurchasePrice = parseFloat(product.purchase_price || 0);
+    }
+    if (latestPurchasePrice === 0) {
+      latestPurchasePrice = parseFloat(product.purchase_price || 0);
+    }
+
+    // 4. Fetch paginated purchase records history for the selected product
+    const [countRows] = await db.query(`
+      SELECT COUNT(*) AS total_records
+      FROM purchase_items pi
+      WHERE pi.product_id = ?
+    `, [productId]);
+    const totalRecords = countRows[0].total_records || 0;
+
+    const [historyRows] = await db.query(`
+      SELECT 
+        DATE_FORMAT(p.purchase_date, '%Y-%m-%d') AS purchase_date,
+        s.name AS supplier_name,
+        p.invoice_number,
+        pi.quantity,
+        pi.price AS purchase_price,
+        pi.total AS total_amount
+      FROM purchase_items pi
+      JOIN purchases p ON pi.purchase_id = p.id
+      LEFT JOIN suppliers s ON p.supplier_id = s.id
+      WHERE pi.product_id = ?
+      ORDER BY p.purchase_date DESC, p.id DESC
+      LIMIT ? OFFSET ?
+    `, [productId, limit, offset]);
+
+    // 5. Role and permissions check for profit metrics visibility
+    const userRole = req.user?.role;
+    const hasProfitAccess = userRole === 'Admin' || userRole === 'Owner';
+
+    // 6. Base Calculations (if allowed)
+    const payload = {
+      success: true,
+      product: {
+        id: product.id,
+        name: product.name,
+        code: product.code,
+        sales_price: parseFloat(product.sales_price || 0),
+        purchase_price: parseFloat(product.purchase_price || 0),
+        stock_quantity: parseInt(product.stock_quantity || 0),
+        initial_stock_quantity: parseInt(product.initial_stock_quantity || 0)
+      },
+      summary: {
+        purchase_units: parseInt(product.initial_stock_quantity || 0),
+        initial_stock_quantity: parseInt(product.initial_stock_quantity || 0),
+        units_sold: unitsSold,
+        current_stock: parseInt(product.stock_quantity || 0),
+        average_purchase_price: avgPurchasePrice,
+        latest_purchase_price: latestPurchasePrice,
+        selling_price: parseFloat(product.sales_price || 0),
+        average_selling_price: avgSellingPrice,
+        total_sales_amount: totalSalesAmount,
+        has_profit_access: hasProfitAccess
+      },
+      purchaseHistory: historyRows.map(row => ({
+        purchase_date: row.purchase_date,
+        supplier_name: row.supplier_name || 'N/A',
+        invoice_number: row.invoice_number || 'N/A',
+        quantity: parseInt(row.quantity || 0),
+        purchase_price: parseFloat(row.purchase_price || 0),
+        total_amount: parseFloat(row.total_amount || 0)
+      })),
+      pagination: {
+        page,
+        limit,
+        total: totalRecords
+      }
+    };
+
+    // Calculate profit figures if permitted
+    if (hasProfitAccess) {
+      const salesAmount = totalSalesAmount;
+
+      // Calculations based on Average Purchase Price:
+      const purchaseCostAvg = unitsSold * avgPurchasePrice;
+      const profitAvg = salesAmount - purchaseCostAvg;
+      const profitPercentAvg = purchaseCostAvg > 0 ? (profitAvg / purchaseCostAvg) * 100 : 0;
+
+      // Calculations based on Latest Purchase Price:
+      const purchaseCostLatest = unitsSold * latestPurchasePrice;
+      const profitLatest = salesAmount - purchaseCostLatest;
+      const profitPercentLatest = purchaseCostLatest > 0 ? (profitLatest / purchaseCostLatest) * 100 : 0;
+
+      payload.profitDetails = {
+        averageBase: {
+          purchase_cost: purchaseCostAvg,
+          sales_amount: salesAmount,
+          profit: profitAvg,
+          profit_percentage: profitPercentAvg
+        },
+        latestBase: {
+          purchase_cost: purchaseCostLatest,
+          sales_amount: salesAmount,
+          profit: profitLatest,
+          profit_percentage: profitPercentLatest
+        }
+      };
+    }
+
+    res.json(payload);
+  } catch (error) {
+    console.error('Error fetching product sold details:', error);
     res.status(500).json({ error: 'Server error: ' + error.message });
   }
 };

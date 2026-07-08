@@ -1165,3 +1165,41 @@
 [2026-06-26T11:32:21.776Z] [getPermissions] User is Owner. Returning *
 [2026-06-26T11:34:13.162Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1782471474,"exp":1782500274}
 [2026-06-26T11:34:13.170Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T14:47:19.017Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T14:47:19.280Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T14:49:44.447Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T14:49:44.502Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T14:51:11.500Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T14:51:11.558Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:09:14.046Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:09:14.051Z] [getPermissions] Error occurred: Error: getaddrinfo ENOTFOUND srv875.hstgr.io
+    at exports.getPermissions (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\controllers\authController.js:296:32)
+    at Layer.handleRequest (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\lib\layer.js:152:17)
+    at next (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\lib\route.js:157:13)
+    at authMiddleware (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\middleware\auth.js:17:5)
+    at Layer.handleRequest (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\lib\layer.js:152:17)
+    at next (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\lib\route.js:157:13)
+    at Route.dispatch (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\lib\route.js:117:3)
+    at handle (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\index.js:435:11)
+    at Layer.handleRequest (C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\lib\layer.js:152:17)
+    at C:\MAMP\htdocs\Stockmanagement\Stockmanagement\backend\node_modules\router\index.js:295:15
+[2026-07-08T15:10:36.314Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:10:36.371Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:14:13.228Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:14:13.282Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:14:54.162Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:14:54.221Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:18:20.276Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:18:20.519Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:37:32.041Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:37:32.098Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:37:59.743Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:37:59.963Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:40:01.853Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:40:01.924Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:40:13.765Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:40:13.822Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:51:43.715Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:51:43.772Z] [getPermissions] User is Owner. Returning *
+[2026-07-08T15:52:31.363Z] [getPermissions] Hit endpoint. User: {"id":1,"username":"admin","email":"admin@example.com","role":"Owner","roleId":1,"iat":1783520762,"exp":1783549562}
+[2026-07-08T15:52:31.419Z] [getPermissions] User is Owner. Returning *
